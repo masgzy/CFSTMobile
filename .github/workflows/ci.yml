@@ -58,7 +58,9 @@ jobs:
       # 交叉编译冒烟：尽早暴露 aarch64/armv7 特有的编译破坏
       # （debug 构建即可，重点在编译通过而非运行）
       - name: 安装 cargo-ndk
-        uses: taiki-e/install-action@cargo-ndk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
 
       - name: Android 交叉编译冒烟（debug，多 ABI）
         run: |
@@ -99,7 +101,10 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
-      - uses: taiki-e/install-action@cargo-ndk
+      - name: 安装 cargo-ndk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
 
       - name: 构建引擎 .so（release，含 16KB 对齐）
         run: |
