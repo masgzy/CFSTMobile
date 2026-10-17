@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,9 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.DcInfo
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestUiState
@@ -78,6 +82,7 @@ fun ResultsSection(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GreenButton(
                 text = "一键复制",
+                icon = R.drawable.ic_sym_content_copy,
                 enabled = scanRows.isNotEmpty(),
                 onClick = {
                     copyToClipboard(context, scanRows.joinToString("\n") { "${it.ip}:${it.port}" })
@@ -86,6 +91,7 @@ fun ResultsSection(
             )
             GreenButton(
                 text = "结果操作",
+                icon = R.drawable.ic_sym_download,
                 enabled = scanRows.isNotEmpty(),
                 onClick = onExportClick,
                 modifier = Modifier.weight(1f),
@@ -175,6 +181,13 @@ private fun DcSummaryTable(
             .padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painter = painterResource(R.drawable.ic_sym_dns),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(6.dp))
             Text("数据中心汇总", fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             CountBadge(dcList.size)

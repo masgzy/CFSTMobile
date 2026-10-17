@@ -1,5 +1,11 @@
 package com.masgzy.cfstmobile.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,8 +27,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -55,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +67,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.ui.theme.CfGreen
 import com.masgzy.cfstmobile.ui.theme.LogBg
 import com.masgzy.cfstmobile.ui.theme.LogBorder
@@ -83,14 +89,16 @@ internal val M3ItemShape = RoundedCornerShape(14.dp)
 
 // ---------------------------------------------------------------- 状态横幅
 
-/** 状态横幅：M3 tonal 面（语义色着色），ok=绿 / busy=主色 / error=红 */
+/** 状态横幅：M3 tonal 面（语义色着色），ok=绿 / busy=主色 / error=红；状态切换带颜色渐变与文字淡入 */
 @Composable
 fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier) {
-    val accent = when (state) {
+    val targetAccent = when (state) {
         BannerState.OK -> OkGreen
         BannerState.BUSY -> MaterialTheme.colorScheme.primary
         BannerState.ERROR -> MaterialTheme.colorScheme.error
     }
+    // 语义色切换用 350ms 渐变（M3 推荐的中等时长 easing），避免颜色跳变
+    val accent by animateColorAsState(targetAccent, tween(durationMillis = 350), label = "bannerAccent")
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = M3ItemShape,
@@ -108,14 +116,22 @@ fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier
                     .background(accent),
             )
             Spacer(Modifier.width(10.dp))
-            Text(
-                text = text,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = accent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            AnimatedContent(
+                targetState = text,
+                transitionSpec = {
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(140))
+                },
+                label = "bannerText",
+            ) { value ->
+                Text(
+                    text = value,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -189,12 +205,15 @@ fun ParamsCard(
 
 /**
  * option-item 参数行（label 在上小字 + 控件在下，tonal 内嵌面）。
+ * label 行可携带 Material Symbols 图标（@DrawableRes，对齐 CFData 参数图标语义，
+ * 不再用 emoji——按官方指引 androidx.compose.material.icons 已弃用，改用 drawable）。
  * 双列网格时外层传 Modifier.weight(1f)，全宽项直接用默认 fillMaxWidth。
  */
 @Composable
 fun OptionItem(
     label: String,
     modifier: Modifier = Modifier,
+    icon: Int? = null,
     control: @Composable () -> Unit,
 ) {
     Column(
@@ -204,13 +223,24 @@ fun OptionItem(
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Spacer(Modifier.height(6.dp))
         Box { control() }
     }
@@ -265,7 +295,7 @@ fun CfDropdown(
                 disabledIndicatorColor = Color.Transparent,
             ),
             trailingIcon = {
-                Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = null)
+                Icon(painter = painterResource(R.drawable.ic_sym_arrow_drop_down), contentDescription = null)
             },
             modifier = Modifier.fillMaxWidth().height(52.dp),
         )
@@ -344,13 +374,14 @@ fun CfTextField(
 
 // ---------------------------------------------------------------- 按钮/徽章
 
-/** 语义成功绿操作按钮（固定语义色，M3 胶囊形） */
+/** 语义成功绿操作按钮（固定语义色，M3 胶囊形，可带 Material Symbols 图标） */
 @Composable
 fun GreenButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    icon: Int? = null,
 ) {
     Button(
         onClick = onClick,
@@ -364,11 +395,15 @@ fun GreenButton(
         ),
         modifier = modifier.fillMaxWidth().height(44.dp),
     ) {
+        if (icon != null) {
+            Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+        }
         Text(text = text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
-/** 主色操作按钮（Material You 取色，M3 胶囊形） */
+/** 主色操作按钮（Material You 取色，M3 胶囊形，可带 Material Symbols 图标） */
 @Composable
 fun PrimaryButton(
     text: String,
@@ -376,6 +411,7 @@ fun PrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     colors: ButtonColors = ButtonDefaults.buttonColors(),
+    icon: Int? = null,
 ) {
     Button(
         onClick = onClick,
@@ -384,6 +420,10 @@ fun PrimaryButton(
         colors = colors,
         modifier = modifier.fillMaxWidth().height(52.dp),
     ) {
+        if (icon != null) {
+            Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+        }
         Text(text = text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
@@ -526,8 +566,10 @@ fun ScrollTable(
             }
         }
         if (rows.isEmpty()) {
+            // 横向滚动容器内 fillMaxWidth 无效（宽度约束无限），
+            // 空态 Box 必须给定列总宽才能真居中，否则「暂无结果」贴左。
             Box(
-                modifier = Modifier.fillMaxWidth().height(72.dp),
+                modifier = Modifier.width(columnWidths.reduce { a, b -> a + b }).height(72.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(

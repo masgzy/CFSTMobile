@@ -94,15 +94,16 @@ android {
 }
 
 dependencies {
-    // Compose（BOM 2026.08.00：ui/foundation 1.12.0、material3 1.4.0、icons 1.7.8）
+    // Compose（BOM 2026.08.00：ui/foundation 1.12.0、material3 1.4.0）
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    // 扩展图标集（CloudQueue/Stop/Share 等）；release 经 R8 裁剪只保留实际引用
-    implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    // 图标：Material Symbols（res/drawable/ic_sym_*.xml，Rounded 24px），
+    // 按 androidx.compose.material.icons 已弃用的官方指引改用 drawable 按需引入，
+    // 不再依赖 material-icons（core/extended 均弃用且拖慢构建、撑大体积）。
 
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.19.0")

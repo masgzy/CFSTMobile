@@ -3,6 +3,14 @@ package com.masgzy.cfstmobile.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,12 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,11 +51,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.masgzy.cfstmobile.BuildConfig
+import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.UiSettings
 import com.masgzy.cfstmobile.ui.components.BannerState
 import com.masgzy.cfstmobile.ui.components.CfTabs
@@ -173,19 +177,33 @@ fun AppRoot(viewModel: TestViewModel) {
                 )
             }
 
-            // ---------------- 开始按钮 ----------------
+            // ---------------- 开始按钮（开始/停止切换带淡入淡出） ----------------
             item(key = "start") {
-                if (uiState.isRunning) {
-                    PrimaryButton(
-                        text = if (uiState.stopRequested) "正在停止…" else "停止测试",
-                        onClick = viewModel::stopTest,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        ),
-                    )
-                } else {
-                    PrimaryButton(text = "开始扫描与测试", onClick = viewModel::startTest)
+                AnimatedContent(
+                    targetState = uiState.isRunning,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220)))
+                            .togetherWith(fadeOut(animationSpec = tween(160)) + scaleOut(targetScale = 0.96f, animationSpec = tween(160)))
+                    },
+                    label = "startButton",
+                ) { running ->
+                    if (running) {
+                        PrimaryButton(
+                            text = if (uiState.stopRequested) "正在停止…" else "停止测试",
+                            onClick = viewModel::stopTest,
+                            icon = R.drawable.ic_sym_stop,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError,
+                            ),
+                        )
+                    } else {
+                        PrimaryButton(
+                            text = "开始扫描与测试",
+                            onClick = viewModel::startTest,
+                            icon = R.drawable.ic_sym_play_arrow,
+                        )
+                    }
                 }
             }
 
@@ -194,7 +212,7 @@ fun AppRoot(viewModel: TestViewModel) {
                 item(key = "progress") { ProgressBarLine(uiState) }
             }
 
-            // ---------------- 结果区（官方双 Tab；非标只有扫描结果） ----------------
+            // ---------------- 结果区（官方双 Tab；非标只有扫描结果；切换带淡入滑动） ----------------
             if (official) {
                 item(key = "tabs") {
                     CfTabs(
@@ -206,25 +224,33 @@ fun AppRoot(viewModel: TestViewModel) {
                     )
                 }
             }
-            if (official && !scanTab) {
-                item(key = "dc") {
-                    DcTestSection(
-                        viewModel = viewModel,
-                        state = dcState,
-                        hasResults = uiState.results.isNotEmpty(),
-                        speedMinMbps = settings.officialSpeedMin,
-                        onExportClick = { showExport = true },
-                    )
-                }
-            } else {
-                item(key = "scan") {
-                    ResultsSection(
-                        viewModel = viewModel,
-                        scanRows = scanRows,
-                        dcState = dcState,
-                        official = official,
-                        onExportClick = { showExport = true },
-                    )
+            item(key = "results") {
+                AnimatedContent(
+                    targetState = if (!official) "scan" else if (scanTab) "scan" else "dc",
+                    transitionSpec = {
+                        val dir = if (targetState == "dc") 1 else -1
+                        (fadeIn(animationSpec = tween(220)) +
+                            slideInVertically(animationSpec = tween(220)) { it / 24 * dir })
+                            .togetherWith(fadeOut(animationSpec = tween(150)))
+                    },
+                    label = "resultTabs",
+                ) { which ->
+                    when (which) {
+                        "dc" -> DcTestSection(
+                            viewModel = viewModel,
+                            state = dcState,
+                            hasResults = uiState.results.isNotEmpty(),
+                            speedMinMbps = settings.officialSpeedMin,
+                            onExportClick = { showExport = true },
+                        )
+                        else -> ResultsSection(
+                            viewModel = viewModel,
+                            scanRows = scanRows,
+                            dcState = dcState,
+                            official = official,
+                            onExportClick = { showExport = true },
+                        )
+                    }
                 }
             }
 
@@ -256,11 +282,11 @@ private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
                 )
             }
         }) {
-            Icon(imageVector = Icons.Filled.Code, contentDescription = "GitHub 仓库")
+            Icon(painter = painterResource(R.drawable.ic_sym_code), contentDescription = "GitHub 仓库")
         }
         Box {
             IconButton(onClick = { showConfigMenu = true }) {
-                Icon(imageVector = Icons.Filled.Save, contentDescription = "保存/加载配置")
+                Icon(painter = painterResource(R.drawable.ic_sym_save), contentDescription = "保存/加载配置")
             }
             ConfigMenu(
                 expanded = showConfigMenu,
@@ -270,7 +296,7 @@ private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
         }
         Box {
             IconButton(onClick = { showSettingsMenu = true }) {
-                Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
+                Icon(painter = painterResource(R.drawable.ic_sym_settings), contentDescription = "设置")
             }
             SettingsMenu(
                 expanded = showSettingsMenu,
@@ -337,6 +363,13 @@ private fun SettingsMenu(
         )
         DropdownMenuItem(
             text = { Text("历史记录") },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sym_history),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
             onClick = onOpenHistory,
         )
         HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
@@ -344,7 +377,7 @@ private fun SettingsMenu(
             text = { Text("恢复全部默认配置", color = MaterialTheme.colorScheme.error) },
             leadingIcon = {
                 Icon(
-                    Icons.Filled.Delete,
+                    painter = painterResource(R.drawable.ic_sym_restart_alt),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(18.dp),
@@ -386,6 +419,13 @@ private fun ConfigMenu(
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
             text = { Text("保存当前配置") },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sym_save),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
             onClick = {
                 onDismiss()
                 viewModel.saveConfigSnapshot()
@@ -393,6 +433,13 @@ private fun ConfigMenu(
         )
         DropdownMenuItem(
             text = { Text("加载保存配置") },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sym_folder_open),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
             onClick = {
                 onDismiss()
                 viewModel.loadConfigSnapshot()
@@ -400,6 +447,13 @@ private fun ConfigMenu(
         )
         DropdownMenuItem(
             text = { Text("自动加载配置") },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sym_sync),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
             trailingIcon = {
                 Switch(
                     checked = settings.autoLoadConfig,
@@ -413,6 +467,14 @@ private fun ConfigMenu(
         HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
         DropdownMenuItem(
             text = { Text("删除保存配置", color = MaterialTheme.colorScheme.error) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sym_delete),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
             onClick = {
                 onDismiss()
                 viewModel.deleteConfigSnapshot()
@@ -476,7 +538,7 @@ private fun MockBanner() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Filled.Info,
+                painter = painterResource(R.drawable.ic_sym_info),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.size(16.dp),

@@ -213,6 +213,22 @@ data class UiSettings(
         else -> null
     }
 
+    /**
+     * 清洗非标手动列表：若内容全部是 Cloudflare 官方段（v4/v6 内置集合），
+     * 视为历史遗留的误填充数据，返回清空后的副本（官方段由官方模式内置提供，
+     * 非标手动列表语义是"用户自有目标"，默认应为空）。
+     * 混有非官方行的内容视为用户真实数据，原样保留。
+     */
+    fun sanitized(): UiSettings {
+        val lines = customIpText.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+        if (lines.isEmpty()) return this
+        val officialSet = (BUILT_IN_IPS + BUILT_IN_IPS_V6).toSet()
+        val allOfficial = lines.all { it in officialSet }
+        return if (allOfficial) copy(customIpText = "") else this
+    }
+
     companion object {
         const val SOURCE_BUILTIN = "builtin"
         const val SOURCE_CUSTOM = "custom"

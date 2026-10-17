@@ -16,12 +16,13 @@ class ConfigBackup(context: Context) {
         file.writeText(ProtocolJson.json.encodeToString(UiSettings.serializer(), settings))
     }
 
-    /** 读取快照；不存在或损坏返回 null */
+    /** 读取快照；不存在或损坏返回 null（官方段误填的手动列表一并清洗） */
     fun load(): UiSettings? =
         runCatching {
             file.takeIf { it.exists() }
                 ?.readText()
                 ?.let { ProtocolJson.json.decodeFromString(UiSettings.serializer(), it) }
+                ?.sanitized()
         }.getOrNull()
 
     /** 快照是否存在 */
