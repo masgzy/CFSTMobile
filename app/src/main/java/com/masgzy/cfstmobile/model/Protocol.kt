@@ -42,6 +42,8 @@ data class CfstConfig(
     @SerialName("print_num") val printNum: Int? = null,
     @SerialName("ping_times") val pingTimes: Int? = null,
     @SerialName("max_threads") val maxThreads: Int? = null,
+    /** 测速并发：同时下载测速的 IP 数量（1=串行最准，>1 吞吐更高但单 IP 速度被摊薄；对齐 CFData nsbspeedtest） */
+    @SerialName("speed_threads") val speedThreads: Int? = null,
     @SerialName("min_delay_ms") val minDelayMs: Int? = null,
     @SerialName("max_delay_ms") val maxDelayMs: Int? = null,
     @SerialName("max_loss_rate") val maxLossRate: Float? = null,
@@ -107,6 +109,40 @@ data class CfstResultItem(
 data class CfstResult(
     @SerialName("count") val count: Int = 0,
     @SerialName("items") val items: List<CfstResultItem> = emptyList(),
+)
+
+/** 精简配置（cfst_compact_create 的 config_json 载荷，对齐 engine compact.rs CompactConfig） */
+@Serializable
+data class CompactConfig(
+    @SerialName("ip_text") val ipText: String = "",
+    @SerialName("threads") val threads: Int? = null,
+    @SerialName("connect_timeout_ms") val connectTimeoutMs: Long? = null,
+    @SerialName("port") val port: Int? = null,
+    @SerialName("max_empty_rounds") val maxEmptyRounds: Int? = null,
+)
+
+/** 精简进度（cfst_compact_poll 的返回载荷，对齐 CFData compact_ipv4_progress） */
+@Serializable
+data class CompactProgress(
+    /** "idle" / "running" / "done" / "error" */
+    @SerialName("phase") val phase: String = "idle",
+    @SerialName("stop_requested") val stopRequested: Boolean = false,
+    @SerialName("pass") val pass: Int = 0,
+    @SerialName("current") val current: Int = 0,
+    @SerialName("total") val total: Int = 0,
+    @SerialName("found") val found: Int = 0,
+    @SerialName("percent") val percent: String = "0.00",
+    @SerialName("status") val status: String = "",
+    @SerialName("logs") val logs: List<String> = emptyList(),
+    @SerialName("message") val message: String? = null,
+)
+
+/** 精简结果（cfst_compact_take_result 的返回载荷，一次性） */
+@Serializable
+data class CompactResult(
+    @SerialName("count") val count: Int = 0,
+    @SerialName("content") val content: String = "",
+    @SerialName("file") val file: String = "ips-v4.txt",
 )
 
 /** 排序模式（引擎返回的是综合评分序；展示层可按需重排） */

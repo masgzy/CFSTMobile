@@ -1,16 +1,14 @@
 package com.masgzy.cfstmobile.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -26,12 +25,22 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -59,16 +68,21 @@ import com.masgzy.cfstmobile.ui.theme.LogGreen
 import com.masgzy.cfstmobile.ui.theme.OkGreen
 
 /**
- * CFData-WEB 风格基础组件库（Material You 取色映射）：
- * 状态横幅 / 模式切换大按钮 / section-box 参数卡 / option-item 参数行 /
- * 下拉选择 / 徽章 / 绿色操作按钮 / 终端日志面板 / 结果 Tab。
- * 布局与 CFData-WEB index.html 逐块对齐，颜色走 MaterialTheme 语义槽位，
+ * Material 3 基础组件库（完全 Material You）：
+ * 状态横幅 / 模式切换（SegmentedButton）/ 参数卡（M3 Card）/ option-item /
+ * 下拉选择 / 徽章 / 语义绿操作按钮 / 终端日志面板 / 结果 Tab（M3 TabRow）。
+ * 颜色全部走 MaterialTheme 语义槽位（动态取色随壁纸），
  * 仅语义色（成功绿/日志深底）固定不变。
  */
 
+/** M3 大圆角（卡片/面板统一） */
+internal val M3CardShape = RoundedCornerShape(20.dp)
+internal val M3FieldShape = RoundedCornerShape(12.dp)
+internal val M3ItemShape = RoundedCornerShape(14.dp)
+
 // ---------------------------------------------------------------- 状态横幅
 
-/** 状态横幅：4dp 左色条 + 淡色底（对齐 .status-bar），ok=绿 / busy=蓝 / error=红 */
+/** 状态横幅：M3 tonal 面（语义色着色），ok=绿 / busy=主色 / error=红 */
 @Composable
 fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier) {
     val accent = when (state) {
@@ -76,30 +90,32 @@ fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier
         BannerState.BUSY -> MaterialTheme.colorScheme.primary
         BannerState.ERROR -> MaterialTheme.colorScheme.error
     }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(accent.copy(alpha = 0.08f))
-            .border(1.dp, accent.copy(alpha = 0.18f), RoundedCornerShape(8.dp)),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = M3ItemShape,
+        color = accent.copy(alpha = 0.10f),
+        contentColor = accent,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(4.dp)
-                .background(accent),
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = text,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = accent,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(accent),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = text,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -107,7 +123,8 @@ enum class BannerState { OK, BUSY, ERROR }
 
 // ---------------------------------------------------------------- 模式切换
 
-/** 模式切换大按钮（对齐 .mode-switch：选中实心主色，未选中浅底） */
+/** 模式切换（M3 SingleChoiceSegmentedButtonRow） */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModeSwitch(
     leftLabel: String,
@@ -117,76 +134,60 @@ fun ModeSwitch(
     onRight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        ModeButton(label = leftLabel, selected = leftSelected, onClick = onLeft, modifier = Modifier.weight(1f))
-        ModeButton(label = rightLabel, selected = !leftSelected, onClick = onRight, modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun ModeButton(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier
-            .height(48.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = if (selected) {
-            null
-        } else {
-            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        },
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = label,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
+    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
+        SegmentedButton(
+            selected = leftSelected,
+            onClick = onLeft,
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+        ) {
+            Text(leftLabel, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        SegmentedButton(
+            selected = !leftSelected,
+            onClick = onRight,
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+        ) {
+            Text(rightLabel, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
 
 // ---------------------------------------------------------------- 参数卡片
 
-/** section-box 参数卡（对齐 .section-box.controls：标题 + 副标题 + 内容列） */
+/** section-box 参数卡（M3 Card，20dp 大圆角 + surfaceContainerLow 色调） */
 @Composable
 fun ParamsCard(
     title: String,
     hint: String?,
     modifier: Modifier = Modifier,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-            .padding(14.dp),
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = M3CardShape,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Column(Modifier.padding(16.dp)) {
+            Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             if (hint != null) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = hint,
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
                 )
             }
+            Spacer(Modifier.height(12.dp))
+            content()
         }
-        Spacer(Modifier.height(10.dp))
-        content()
     }
 }
 
 /**
- * option-item 参数行（对齐 .option-item：label 在上小字 + 控件在下，白底圆角 10）。
+ * option-item 参数行（label 在上小字 + 控件在下，tonal 内嵌面）。
  * 双列网格时外层传 Modifier.weight(1f)，全宽项直接用默认 fillMaxWidth。
  */
 @Composable
@@ -198,10 +199,9 @@ fun OptionItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .clip(M3ItemShape)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(
             text = label,
@@ -210,30 +210,14 @@ fun OptionItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Box { control() }
-    }
-}
-
-/** option-item 之间的标准间距 */
-@Composable
-fun OptionGap() = Spacer(Modifier.height(10.dp))
-
-/** 双列网格行（对齐 CFData .controls 的 option-item 2 列排布） */
-@Composable
-fun OptionGrid(
-    left: @Composable () -> Unit,
-    right: @Composable () -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(modifier = Modifier.weight(1f)) { left() }
-        Box(modifier = Modifier.weight(1f)) { right() }
     }
 }
 
 // ---------------------------------------------------------------- 输入控件
 
-/** 选择器（对齐 select：只读输入框 + 下拉箭头 + DropdownMenu，支持分组标题） */
+/** 选择器（只读输入框 + 下拉箭头 + DropdownMenu，支持分组标题） */
 @Composable
 fun CfDropdown(
     label: String?,
@@ -254,7 +238,7 @@ fun CfDropdown(
             label = null,
             placeholder = { if (label != null) Text(label, fontSize = 13.sp, maxLines = 1) },
             textStyle = TextStyle(fontSize = 14.sp),
-            shape = RoundedCornerShape(10.dp),
+            shape = M3FieldShape,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
@@ -272,7 +256,7 @@ fun CfDropdown(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(M3FieldShape)
                     .clickable { expanded = true },
             )
         }
@@ -303,7 +287,7 @@ fun CfDropdown(
 /** 下拉选项（header=true 时渲染为分组标题，不可点） */
 data class CfOption(val label: String, val value: String, val header: Boolean = false)
 
-/** 数字/文本输入（对齐 input：填充满控件区，数字键盘可选） */
+/** 数字/文本输入（填充满控件区，数字键盘可选） */
 @Composable
 fun CfTextField(
     value: String,
@@ -325,7 +309,7 @@ fun CfTextField(
         maxLines = maxLines,
         placeholder = { if (placeholder != null) Text(placeholder, fontSize = 13.sp, maxLines = 1) },
         textStyle = TextStyle(fontSize = 14.sp),
-        shape = RoundedCornerShape(10.dp),
+        shape = M3FieldShape,
         keyboardOptions = KeyboardOptions(
             keyboardType = if (number) KeyboardType.Number else KeyboardType.Text,
         ),
@@ -343,7 +327,7 @@ fun CfTextField(
 
 // ---------------------------------------------------------------- 按钮/徽章
 
-/** 绿色操作按钮（对齐 .action-btn.export-btn 的语义成功绿，固定不随主题） */
+/** 语义成功绿操作按钮（固定语义色，M3 胶囊形） */
 @Composable
 fun GreenButton(
     text: String,
@@ -354,20 +338,20 @@ fun GreenButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(
             containerColor = CfGreen,
             contentColor = Color.White,
             disabledContainerColor = CfGreen.copy(alpha = 0.35f),
             disabledContentColor = Color.White.copy(alpha = 0.8f),
         ),
-        modifier = modifier.fillMaxWidth().height(42.dp),
+        modifier = modifier.fillMaxWidth().height(44.dp),
     ) {
         Text(text = text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
-/** 主色操作按钮（Material You 取色） */
+/** 主色操作按钮（Material You 取色，M3 胶囊形） */
 @Composable
 fun PrimaryButton(
     text: String,
@@ -379,15 +363,15 @@ fun PrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(50),
         colors = colors,
-        modifier = modifier.fillMaxWidth().height(50.dp),
+        modifier = modifier.fillMaxWidth().height(52.dp),
     ) {
         Text(text = text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
-/** 计数徽章（对齐 .badge：主色圆角胶囊） */
+/** 计数徽章（主色圆角胶囊） */
 @Composable
 fun CountBadge(count: Int, modifier: Modifier = Modifier) {
     Surface(
@@ -407,7 +391,8 @@ fun CountBadge(count: Int, modifier: Modifier = Modifier) {
 
 // ---------------------------------------------------------------- 结果 Tab
 
-/** 结果双 Tab（对齐 .tabs：外框圆角盒 + 选中项淡主色底） */
+/** 结果双 Tab（M3 TabRow + SecondaryIndicator） */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CfTabs(
     leftLabel: String,
@@ -417,49 +402,40 @@ fun CfTabs(
     onRight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        TabCell(label = leftLabel, selected = leftSelected, onClick = onLeft, modifier = Modifier.weight(1f))
-        TabCell(label = rightLabel, selected = !leftSelected, onClick = onRight, modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun TabCell(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                } else {
-                    Color.Transparent
-                },
+    TabRow(
+        selectedTabIndex = if (leftSelected) 0 else 1,
+        modifier = modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        indicator = { positions ->
+            SecondaryIndicator(
+                Modifier.tabIndicatorOffset(positions[if (leftSelected) 0 else 1]),
+                height = 3.dp,
             )
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+        },
+        divider = {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        },
     ) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
+        Tab(
+            selected = leftSelected,
+            onClick = onLeft,
+            text = { Text(leftLabel, fontWeight = FontWeight.Bold) },
+            selectedContentColor = MaterialTheme.colorScheme.primary,
+            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Tab(
+            selected = !leftSelected,
+            onClick = onRight,
+            text = { Text(rightLabel, fontWeight = FontWeight.Bold) },
+            selectedContentColor = MaterialTheme.colorScheme.primary,
+            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 // ---------------------------------------------------------------- 日志面板
 
-/** 终端日志面板（对齐 .log-box：固定深底绿字等宽，自动滚到最新） */
+/** 终端日志面板（固定深底绿字等宽，自动滚到最新；CFData 终端风格语义色） */
 @Composable
 fun LogPanel(lines: List<String>, modifier: Modifier = Modifier) {
     val scroll = rememberScrollState()
@@ -470,9 +446,9 @@ fun LogPanel(lines: List<String>, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(170.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(LogBg)
-            .border(1.dp, LogBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, LogBorder, RoundedCornerShape(16.dp))
             .verticalScroll(scroll)
             .padding(12.dp),
     ) {
@@ -495,7 +471,7 @@ fun LogPanel(lines: List<String>, modifier: Modifier = Modifier) {
 // ---------------------------------------------------------------- 宽表格
 
 /**
- * 宽表格（对齐 CFData scroll-table max-height:520px：横向滚动 + 纵向滚动）。
+ * 宽表格（横向滚动 + 纵向滚动，M3 tonal 容器）。
  * 每列固定宽度，表头与数据行同构对齐；适合 8~12 列的宽表。
  */
 @Composable
@@ -512,8 +488,8 @@ fun ScrollTable(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .clip(M3ItemShape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), M3ItemShape)
             .horizontalScroll(hScroll),
     ) {
         Row(
@@ -576,8 +552,7 @@ fun ScrollTable(
 }
 
 /**
- * 结果表格（对齐 scroll-table：横向滚动 + 表头行）。
- * columns 与 cells 等长；行点击回调用于复制。
+ * 结果表格（横向滚动 + 表头行）。columns 与 cells 等长；行点击回调用于复制。
  */
 @Composable
 fun CfTable(
@@ -589,8 +564,8 @@ fun CfTable(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(10.dp)),
+            .clip(M3ItemShape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), M3ItemShape),
     ) {
         Row(
             modifier = Modifier

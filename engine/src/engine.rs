@@ -65,6 +65,9 @@ pub struct EngineConfig {
     pub min_speed_mb_s: Option<f32>,
     /// 需要达标的结果数量（与 -dn 等价，默认 10）
     pub test_count: Option<usize>,
+    /// 测速并发：同时下载测速的 IP 数量（1~64，默认 1 = 串行最准；
+    /// 对齐 CFData-WEB nsbspeedtest 语义）
+    pub speed_threads: Option<usize>,
     /// 达到可用数量后提前结束 Ping（与 -tn 等价）
     pub target_num: Option<usize>,
     /// 结果保留数量上限（默认 10）
@@ -109,6 +112,7 @@ impl Default for EngineConfig {
             download_time: None,
             min_speed_mb_s: None,
             test_count: None,
+            speed_threads: None,
             target_num: None,
             print_num: None,
             ping_times: None,
@@ -173,6 +177,9 @@ impl EngineConfig {
         }
         if let Some(v) = self.test_count {
             args.test_count = v.max(1);
+        }
+        if let Some(v) = self.speed_threads {
+            args.speed_threads = v.clamp(1, 64);
         }
         if let Some(v) = self.target_num {
             args.target_num = Some(v.max(1));
@@ -608,6 +615,23 @@ mod tests {
             .to_args()
             .unwrap_err();
         assert!(err.contains("ICMP"), "actual: {err}");
+    }
+
+    #[test]
+    fn config_speed_threads_clamped() {
+        let cfg = r#"{"ip_text":"1.1.1.1","disable_download":true,"speed_threads":999}"#;
+        let args = serde_json::from_str::<EngineConfig>(cfg)
+            .unwrap()
+            .to_args()
+            .unwrap();
+        assert_eq!(args.speed_threads, 64, "speed_threads 钳制到 64");
+
+        let cfg = r#"{"ip_text":"1.1.1.1","disable_download":true}"#;
+        let args = serde_json::from_str::<EngineConfig>(cfg)
+            .unwrap()
+            .to_args()
+            .unwrap();
+        assert_eq!(args.speed_threads, 1, "缺省串行测速");
     }
 
     #[test]

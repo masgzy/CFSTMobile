@@ -3,7 +3,6 @@ package com.masgzy.cfstmobile.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,10 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
@@ -32,12 +29,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -69,11 +70,13 @@ import com.masgzy.cfstmobile.viewmodel.TestUiState
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
- * 应用根（对齐 CFData-WEB 单页布局，Material You 取色）：
- * 标题（CFSTMobile + 版本号副行）+ 右上操作（GitHub/配置/设置下拉菜单）→ 状态横幅 →
- * 模式切换（官方/非标优选）→ 参数卡 → 开始按钮 → 进度条 → 结果区（官方双 Tab：扫描/详细测试）→ 终端日志。
- * 非标模式隐藏详细测试 Tab（对齐 CFData switchMode 的 testTab display:none）。
+ * 应用根（完全 Material You）：
+ * LargeTopAppBar（滚动折叠：CFSTMobile 主标题 + 版本号副行 + 右上操作）→
+ * 状态横幅 → 模式切换（SegmentedButton）→ 参数卡 → 开始按钮 → 进度条 →
+ * 结果区（官方双 Tab：扫描/详细测试）→ 终端日志。
+ * 非标模式隐藏详细测试 Tab（对齐 CFData switchMode）。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(viewModel: TestViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -81,6 +84,7 @@ fun AppRoot(viewModel: TestViewModel) {
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val dcState by viewModel.dcState.collectAsStateWithLifecycle()
     val scanRows by viewModel.scanRows.collectAsStateWithLifecycle()
+    val compactState by viewModel.compactState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showExport by remember { mutableStateOf(false) }
@@ -98,30 +102,54 @@ fun AppRoot(viewModel: TestViewModel) {
         if (official && dcState.step == com.masgzy.cfstmobile.data.DcStep.TESTING) scanTab = false
     }
 
-    Scaffold { padding ->
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = "CFSTMobile",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                actions = { TopActions(viewModel, settings) },
+                scrollBehavior = scrollBehavior,
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+    ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .statusBarsPadding(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                .padding(padding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // ---------------- 标题 + 右上操作（同一行：左标题块 / 右图标排） ----------------
-            item(key = "header") {
-                Header(viewModel = viewModel, settings = settings)
-            }
             if (uiState.isMock) {
                 item(key = "mock") { MockBanner() }
             }
 
-            // ---------------- 状态横幅（对齐 .status-bar） ----------------
+            // ---------------- 状态横幅 ----------------
             item(key = "status") {
                 val (bannerState, bannerText) = bannerInfo(uiState)
                 StatusBanner(text = bannerText, state = bannerState)
             }
 
-            // ---------------- 模式切换（对齐 .mode-switch） ----------------
+            // ---------------- 模式切换（SegmentedButton） ----------------
             item(key = "mode") {
                 ModeSwitch(
                     leftLabel = "官方优选",
@@ -132,16 +160,20 @@ fun AppRoot(viewModel: TestViewModel) {
                 )
             }
 
-            // ---------------- 参数卡（对齐 .controls） ----------------
+            // ---------------- 参数卡 ----------------
             item(key = "params") {
                 ParamsSection(
                     settings = settings,
                     official = official,
                     onUpdate = viewModel::updateSettings,
+                    compactState = compactState,
+                    onStartCompact = viewModel::startCompact,
+                    onStopCompact = viewModel::stopCompact,
+                    onDeleteCompact = viewModel::deleteCompactLibrary,
                 )
             }
 
-            // ---------------- 开始按钮（对齐 #btnStart） ----------------
+            // ---------------- 开始按钮 ----------------
             item(key = "start") {
                 if (uiState.isRunning) {
                     PrimaryButton(
@@ -157,7 +189,7 @@ fun AppRoot(viewModel: TestViewModel) {
                 }
             }
 
-            // ---------------- 进度条（对齐 .progress-container） ----------------
+            // ---------------- 进度条 ----------------
             if (uiState.isRunning) {
                 item(key = "progress") { ProgressBarLine(uiState) }
             }
@@ -196,7 +228,7 @@ fun AppRoot(viewModel: TestViewModel) {
                 }
             }
 
-            // ---------------- 终端日志面板（对齐 .log-box） ----------------
+            // ---------------- 终端日志面板 ----------------
             item(key = "logs") { LogPanel(lines = logs) }
         }
     }
@@ -206,68 +238,50 @@ fun AppRoot(viewModel: TestViewModel) {
     }
 }
 
-// ---------------------------------------------------------------- 头部
+// ---------------------------------------------------------------- 头部操作
 
-/** 标题行（对齐 .logo-area + .top-actions 同行布局）：左标题块，右图标排，无额外顶距 */
+/** 右上操作排：GitHub / 配置菜单 / 设置菜单 */
 @Composable
-private fun Header(viewModel: TestViewModel, settings: UiSettings) {
+private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
     var showSettingsMenu by remember { mutableStateOf(false) }
     var showConfigMenu by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "CFSTMobile",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "v${BuildConfig.VERSION_NAME}",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        IconButton(onClick = {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/masgzy/CFSTMobile")),
+                )
+            }
+        }) {
+            Icon(imageVector = Icons.Filled.Code, contentDescription = "GitHub 仓库")
+        }
+        Box {
+            IconButton(onClick = { showConfigMenu = true }) {
+                Icon(imageVector = Icons.Filled.Save, contentDescription = "保存/加载配置")
+            }
+            ConfigMenu(
+                expanded = showConfigMenu,
+                onDismiss = { showConfigMenu = false },
+                viewModel = viewModel,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            IconButton(onClick = {
-                runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/masgzy/CFSTMobile")),
-                    )
-                }
-            }) {
-                Icon(imageVector = Icons.Filled.Code, contentDescription = "GitHub 仓库")
+        Box {
+            IconButton(onClick = { showSettingsMenu = true }) {
+                Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
             }
-            Box {
-                IconButton(onClick = { showConfigMenu = true }) {
-                    Icon(imageVector = Icons.Filled.Save, contentDescription = "保存/加载配置")
-                }
-                ConfigMenu(
-                    expanded = showConfigMenu,
-                    onDismiss = { showConfigMenu = false },
-                    viewModel = viewModel,
-                )
-            }
-            Box {
-                IconButton(onClick = { showSettingsMenu = true }) {
-                    Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
-                }
-                SettingsMenu(
-                    expanded = showSettingsMenu,
-                    onDismiss = { showSettingsMenu = false },
-                    viewModel = viewModel,
-                    settings = settings,
-                    onOpenHistory = {
-                        showSettingsMenu = false
-                        showHistory = true
-                    },
-                )
-            }
+            SettingsMenu(
+                expanded = showSettingsMenu,
+                onDismiss = { showSettingsMenu = false },
+                viewModel = viewModel,
+                settings = settings,
+                onOpenHistory = {
+                    showSettingsMenu = false
+                    showHistory = true
+                },
+            )
         }
     }
 
@@ -344,14 +358,12 @@ private fun SettingsMenu(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ThemeModeButton(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Text(
             text = label,
@@ -411,7 +423,7 @@ private fun ConfigMenu(
 
 // ---------------------------------------------------------------- 横幅/进度
 
-/** 状态横幅文案（对齐 CFData status-bar 语义：就绪绿/进行蓝/错误红） */
+/** 状态横幅文案（对齐 CFData status-bar 语义：就绪绿/进行主色/错误红） */
 private fun bannerInfo(state: TestUiState): Pair<BannerState, String> = when {
     state.phase == "error" -> BannerState.ERROR to (state.message ?: "测速失败")
     state.isRunning -> BannerState.BUSY to when {
@@ -428,7 +440,7 @@ private fun bannerInfo(state: TestUiState): Pair<BannerState, String> = when {
     else -> BannerState.OK to "引擎就绪 · 配置参数后开始扫描与测试"
 }
 
-/** 进度条（对齐 .progress-bar：长条 + 百分比文字） */
+/** 进度条（M3 LinearProgressIndicator + 百分比文字） */
 @Composable
 private fun ProgressBarLine(state: TestUiState) {
     val frac: Float? = when (state.phase) {
@@ -456,7 +468,7 @@ private fun ProgressBarLine(state: TestUiState) {
 private fun MockBanner() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.errorContainer,
     ) {
         Row(

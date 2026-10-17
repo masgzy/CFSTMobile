@@ -47,4 +47,27 @@ object CfstFfi {
 
     /** 销毁引擎（不阻塞） */
     external fun engineDestroy(ptr: Long)
+
+    // ---------------- 地址库精简（CompactSession，句柄语义与 engine 系列一致） ----------------
+
+    /** 创建精简会话；失败返回 0 并把错误写回 errOut */
+    external fun compactCreate(configJson: ByteArray, errOut: ByteArray): Long
+
+    /** 启动精简（仅 idle 态有效） */
+    external fun compactStart(ptr: Long): Boolean
+
+    /** 当前阶段：0 idle / 1 running / 2 done / 3 error */
+    external fun compactPhase(ptr: Long): Int
+
+    /** 协作式停止：探测线程在检查点收尾，已保留子网仍可取 */
+    external fun compactStop(ptr: Long)
+
+    /** 轮询精简进度 JSON（含 pass/current/total/found/percent/status/logs） */
+    external fun compactPoll(ptr: Long): ByteArray?
+
+    /** 取精简结果 JSON（done 阶段一次性：{count, content, file}） */
+    external fun compactTakeResult(ptr: Long): ByteArray?
+
+    /** 销毁精简会话（不阻塞） */
+    external fun compactDestroy(ptr: Long)
 }

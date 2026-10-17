@@ -34,6 +34,9 @@ pub(crate) struct Args {
     pub(crate) timeout_duration: Option<Duration>, // 单次下载测速的持续时间
     pub(crate) min_speed_bps: f32,                 // 最低下载速度要求(B/s)，解析时由 MB/s 转换
     pub(crate) disable_download: bool,             // 是否禁用下载测试
+    /// 同时测速的 IP 数量（测速并发）。1 = 串行（上游默认，结果最准），
+    /// >1 时多个 IP 并发下载（总吞吐更高但单 IP 速度被摊薄，对齐 CFData nsbspeedtest 语义）
+    pub(crate) speed_threads: usize,
 
     // 结果处理参数
     pub(crate) target_num: Option<usize>, // Ping所需可用IP数量
@@ -73,6 +76,7 @@ impl Args {
             timeout_duration: Some(Duration::from_secs(10)),
             min_speed_bps: 0.0,
             disable_download: false,
+            speed_threads: 1,
             target_num: None,
             print_num: 10,
             ip_file: String::new(),

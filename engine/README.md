@@ -131,6 +131,7 @@ snake_case；全部字段可缺省，缺省值与上游 CLI 默认一致。
 | `print_num` | Int? | `10` | 结果保留数量上限 |
 | `ping_times` | Int? | `4` | 每 IP 延迟测速次数 |
 | `max_threads` | Int? | `256` | 并发上限（1~1024；Android 建议 64~256） |
+| `speed_threads` | Int? | `1` | 测速并发：同时下载测速的 IP 数量（1~64）。1=串行（上游默认，结果最准）；>1 多 IP 并发下载，吞吐更高但单 IP 速度被摊薄（对齐 CFData nsbspeedtest） |
 | `min_delay_ms` | Int? | `0` | 延迟下限（0~2000，不得大于 max_delay_ms；不随倍率放宽） |
 | `max_delay_ms` | Int? | `2000` | 延迟上限（0~2000）；HTTPing 模式按端口自动放宽：TLS 端口（443/2053/2083/2087/2096/8443）×4.0、明文端口×1.3（对齐 CFData-WEB latencyMultiplier，显示值仍为原始 TTFB） |
 | `max_loss_rate` | Float? | `1.0` | 丢包率上限（0.0~1.0） |
@@ -188,6 +189,37 @@ snake_case；全部字段可缺省，缺省值与上游 CLI 默认一致。
 - 每域名解析超时 5s，展开为多个测试目标（IPv4 优先，单域名上限 50 条记录，与 CFData-WEB 非标模式一致）；
 - 解析失败的域名警告跳过；若全部无效则 `phase=error`（「没有可测试的目标」）；
 - 结果行的 `ip` 为解析后的实际地址，`origin` 保留原始输入；下载测速 SNI/Host 仍取 `url` 的主机名，与 IP 优选行为一致。
+
+## 三B、地址库精简会话（`cfst_compact_*` 函数族）
+
+独立于测速引擎的第二类会话（对齐 CFData-WEB compactipv4 / tasks_compact.go）：
+按 `/24` 子网探测 TCP:80 连通性，仅保留活跃子网。
+
+```c
+void* cfst_compact_create(const char* config_json, char* err_out, int err_cap);
+bool  cfst_compact_start(void* session);
+void  cfst_compact_stop(void* session);   // 协作式，已保留子网仍可取
+uint32_t cfst_compact_phase(void* session); // 0 idle 1 running 2 done 3 error
+char* cfst_compact_poll(void* session);   // 进度 JSON，cfst_string_free 释放
+char* cfst_compact_take_result(void* session); // 一次性，cfst_string_free 释放
+void  cfst_compact_destroy(void* session); // 请求停止并释放句柄，永不阻塞
+```
+
+配置 JSON（snake_case，全部可缺省除 `ip_text`）：
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `ip_text` | String | （必填） | 地址库内容：每行一个 CIDR 或裸 IPv4，`#` 注释跳过；容忍 `IP:端口` 后缀与行内注释 |
+| `threads` | Int? | `100` | 并发探测线程数（1~512） |
+| `connect_timeout_ms` | Int? | `1000` | 单次 TCP 连接超时（100~10000） |
+| `port` | Int? | `80` | 探测端口 |
+| `max_empty_rounds` | Int? | `2` | 连续无新发现的最大轮数 |
+
+- 解析：`a.b.c.d/p`（p>=24 取所在 /24，p<24 展开全部 /24，单条上限 65536）；裸 IPv4 → 所在 /24；去重后为候选集；
+- 每轮为每个未确认子网抽取一个未用过的末八位组探测（xorshift 抽样，跨轮不重复，试满 256 个放弃）；
+- 连续 `max_empty_rounds` 轮无新发现提前收敛；
+- 进度 JSON：`{phase, stop_requested, pass, current, total, found, percent, status, logs[], message?}`；
+- 结果 JSON：`{count, content, file}`，`content` 为按数值序排列的 `a.b.c.0/24` 行（换行结尾），供调用方落盘。
 
 ---
 

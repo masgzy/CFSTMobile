@@ -15,6 +15,7 @@
 //! - `args` / `main`：配置与 CLI（上游逻辑，CLI 部分按 feature 门控）
 //! - 其余模块为上游核心算法（IP 生成 / ping / 下载 / 排序），仅做库化解耦
 
+pub mod compact;
 pub mod engine;
 pub mod ffi;
 

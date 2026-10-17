@@ -99,6 +99,49 @@ class UiSettingsTest {
     }
 
     @Test
+    fun `speed threads - official serial, nsb user value`() {
+        // 官方恒为串行 1（上游默认最准）；非标用用户设置值
+        val official = UiSettings(ipSource = UiSettings.SOURCE_BUILTIN)
+        assertEquals(1, official.speedThreads)
+        val nsb = UiSettings(
+            ipSource = UiSettings.SOURCE_CUSTOM,
+            customIpText = "1.2.3.4",
+            nsbSpeedThreads = 8,
+        )
+        assertEquals(8, nsb.speedThreads)
+        val json = ProtocolJson.json.encodeToString(
+            com.masgzy.cfstmobile.model.CfstConfig.serializer(),
+            nsb.toCfstConfig(),
+        )
+        assertTrue(json.contains("\"speed_threads\":8"))
+    }
+
+    @Test
+    fun `nsb download requires speed threads over zero`() {
+        // 对齐 CFData「需测速并发与测速结果数量均大于 0」
+        val zero = UiSettings(
+            ipSource = UiSettings.SOURCE_CUSTOM,
+            nsbSpeedLimit = 5,
+            nsbAutoSpeed = true,
+            nsbSpeedThreads = 0,
+        )
+        assertEquals(false, zero.downloadEnabled)
+        assertEquals(true, zero.copy(nsbSpeedThreads = 1).downloadEnabled)
+    }
+
+    @Test
+    fun `auto upload choice round trips`() {
+        val s = UiSettings(officialAutoUpload = UiSettings.UPLOAD_GITHUB_CSV, nsbAutoUpload = UiSettings.UPLOAD_GITHUB_TXT)
+        val restored = ProtocolJson.json.decodeFromString(
+            UiSettings.serializer(),
+            ProtocolJson.json.encodeToString(UiSettings.serializer(), s),
+        )
+        assertEquals(UiSettings.UPLOAD_GITHUB_CSV, restored.officialAutoUpload)
+        assertEquals(UiSettings.UPLOAD_GITHUB_TXT, restored.nsbAutoUpload)
+        assertEquals(UiSettings.UPLOAD_OFF, UiSettings().officialAutoUpload)
+    }
+
+    @Test
     fun `mode specific values select threads delay speed`() {
         val s = UiSettings(
             ipSource = UiSettings.SOURCE_CUSTOM,

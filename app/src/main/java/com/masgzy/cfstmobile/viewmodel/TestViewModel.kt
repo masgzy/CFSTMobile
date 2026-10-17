@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.masgzy.cfstmobile.data.ConfigBackup
+import com.masgzy.cfstmobile.data.CompactLibrary
 import com.masgzy.cfstmobile.data.DcLocation
 import com.masgzy.cfstmobile.data.DcLocations
 import com.masgzy.cfstmobile.data.DcProbe
@@ -14,6 +15,8 @@ import com.masgzy.cfstmobile.data.DcSortKey
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestItem
 import com.masgzy.cfstmobile.data.DcTestUiState
+import com.masgzy.cfstmobile.data.GithubClient
+import com.masgzy.cfstmobile.data.GithubStore
 import com.masgzy.cfstmobile.data.HistoryRecord
 import com.masgzy.cfstmobile.data.HistoryStore
 import com.masgzy.cfstmobile.data.ScanRow
@@ -21,11 +24,15 @@ import com.masgzy.cfstmobile.data.SettingsRepository
 import com.masgzy.cfstmobile.data.UiSettings
 import com.masgzy.cfstmobile.data.aggregateDcList
 import com.masgzy.cfstmobile.data.sortDcResults
+import com.masgzy.cfstmobile.engine.CompactSessionFactory
+import com.masgzy.cfstmobile.engine.CompactSessionHandle
 import com.masgzy.cfstmobile.engine.CfstEngineFactory
 import com.masgzy.cfstmobile.engine.CfstSession
 import com.masgzy.cfstmobile.ffi.CfstFfi
 import com.masgzy.cfstmobile.model.CfstResultItem
+import com.masgzy.cfstmobile.model.CompactConfig
 import com.masgzy.cfstmobile.model.DownloadProgress
+import com.masgzy.cfstmobile.model.ExportFormatter
 import com.masgzy.cfstmobile.model.PingProgress
 import com.masgzy.cfstmobile.model.ProtocolJson
 import kotlinx.coroutines.CancellationException
@@ -73,6 +80,27 @@ data class TestUiState(
     val isDone: Boolean get() = phase == "done" || phase == "error" || (!isRunning && results.isNotEmpty())
 }
 
+/** 地址库精简 UI 状态（对齐 CFData compact_ipv4_progress） */
+data class CompactUiState(
+    val running: Boolean = false,
+    /** "idle" / "running" / "done" / "error" */
+    val phase: String = "idle",
+    val stopRequested: Boolean = false,
+    val pass: Int = 0,
+    val current: Int = 0,
+    val total: Int = 0,
+    val found: Int = 0,
+    val percent: Float = 0f,
+    val status: String = "",
+    /** 引擎近期日志（最近 40 条，每次 poll 整体替换） */
+    val logs: List<String> = emptyList(),
+    val message: String? = null,
+    /** 完成后保留的 /24 子网数（未运行过为 null） */
+    val doneCount: Int? = null,
+    /** 本地精简地址库当前子网数 */
+    val libCount: Int = 0,
+)
+
 /**
  * 测速主 ViewModel：管理设置持久化、引擎会话生命周期（250ms 轮询）、
  * 非标 URL 拉取、数据中心聚合（扫描完成自动触发）与批量测速。
@@ -82,6 +110,8 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     private val settingsRepo = SettingsRepository(app)
     private val historyStore = HistoryStore(app)
     private val configBackup = ConfigBackup(app)
+    private val compactLibrary = CompactLibrary(app)
+    private val githubStore = GithubStore(app)
 
     private val _uiState = MutableStateFlow(TestUiState())
     val uiState: StateFlow<TestUiState> = _uiState.asStateFlow()
@@ -111,11 +141,22 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     private val _toast = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val toast: SharedFlow<String> = _toast.asSharedFlow()
 
+    // ------------------------------------------------------ 地址库精简
+
+    private val _compactState = MutableStateFlow(CompactUiState(libCount = compactLibrary.subnetCount()))
+    val compactState: StateFlow<CompactUiState> = _compactState.asStateFlow()
+
     /** 进行中的会话（跨线程引用仅用于 stop） */
     private var session: CfstSession? = null
 
     /** 批量测速会话（一键测速/继续测速/单行测速，独立于主扫描会话） */
     private var speedSession: CfstSession? = null
+
+    /** 精简会话（独立于扫描会话） */
+    private var compactSession: CompactSessionHandle? = null
+
+    /** 本次任务是否已触发过自动上传（对齐 CFData autoUploadKeys 去重） */
+    private var autoUploadDone = false
 
     // ------------------------------------------------------ 扫描结果行（enrich 后）
 
@@ -199,6 +240,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         _scanRows.value = emptyList()
         _uiState.value = TestUiState(isRunning = true, isMock = !CfstFfi.available)
         stopLogged = false
+        autoUploadDone = false
 
         viewModelScope.launch(Dispatchers.IO) {
             // 非标模式：网络 URL 实时拉取目标列表（对齐 CFData nsbSourceUrl 后端拉取）
@@ -223,11 +265,23 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             log(
                 "开始扫描：$modeDesc · 端口 ${s.enginePort} · " +
                     (if (s.pingMode == UiSettings.PING_HTTP) "httping" else "tcping") +
-                    (if (s.downloadEnabled) " · 自动测速" else ""),
+                    (if (s.downloadEnabled) " · 自动测速（并发 ${s.speedThreads}）" else ""),
             )
+            var cfg = s.toCfstConfig(urlTargets)
+            // 官方 + 精简地址库：引擎 ip_file 直读本地库（对齐 CFData 覆盖 ips-v4.txt 后续扫描）
+            if (s.official && s.officialUseCompactLib) {
+                val count = compactLibrary.subnetCount()
+                val path = compactLibrary.engineFilePath()
+                if (path != null && count > 0) {
+                    log("使用精简地址库：$count 个 /24 子网")
+                    cfg = cfg.copy(ipText = "", ipFile = path)
+                } else {
+                    log("精简地址库不存在，回退内置段")
+                }
+            }
             val configJson = ProtocolJson.json.encodeToString(
                 com.masgzy.cfstmobile.model.CfstConfig.serializer(),
-                s.toCfstConfig(urlTargets),
+                cfg,
             )
             val current = try {
                 CfstEngineFactory.create(configJson)
@@ -314,12 +368,169 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             val autoSpeed = s.officialAutoSpeed
             startDcTestInternal(autoStart = autoSpeed)
         }
+        // 自动上传（对齐 CFData test_complete 后的 autoUploadResults）
+        maybeAutoUpload(official = s.official)
     }
 
     /** 协作式停止：引擎在检查点收尾并保留部分结果 */
     fun stopTest() {
         session?.stop()
         speedSession?.stop()
+    }
+
+    // ------------------------------------------------------ 地址库精简
+
+    /**
+     * 精简当前官方段（对齐 CFData compactipv4）：按 /24 子网探测 TCP:80 连通性，
+     * 仅保留活跃子网并覆盖本地 ips-v4.txt；完成后自动开启「使用精简地址库」。
+     */
+    fun startCompact() {
+        if (_compactState.value.running) return
+        val s = _settings.value
+        if (!s.official || s.ipType != UiSettings.IP_V4) {
+            _toast.tryEmit("精简地址库仅支持官方 IPv4 段")
+            return
+        }
+        val content = s.effectiveSegments.joinToString("\n")
+        if (content.isBlank()) {
+            _toast.tryEmit("当前没有可精简的官方段（先在高级参数选择 IP 段）")
+            return
+        }
+        compactJob?.cancel()
+        compactJob = viewModelScope.launch(Dispatchers.IO) {
+            _compactState.value = CompactUiState(running = true, libCount = _compactState.value.libCount)
+            log("开始精简 IPv4 地址库（按 /24 子网探测 TCP:80 连通性）...")
+            val cfgJson = ProtocolJson.json.encodeToString(
+                com.masgzy.cfstmobile.model.CompactConfig.serializer(),
+                CompactConfig(ipText = content, threads = 100),
+            )
+            val current = try {
+                CompactSessionFactory.create(cfgJson)
+            } catch (e: Exception) {
+                _compactState.update { it.copy(running = false, phase = "error", message = e.message ?: "创建精简会话失败") }
+                return@launch
+            }
+            compactSession = current
+            try {
+                if (!current.start()) {
+                    _compactState.update { it.copy(running = false, message = "精简会话已在运行中") }
+                    return@launch
+                }
+                var lastPass = 0
+                while (isActive) {
+                    delay(POLL_INTERVAL_MS)
+                    val p = current.poll()
+                    // 关键轮次日志（引擎 logs 为滚动窗口，不能整体镜像避免重复刷屏）
+                    if (p.pass > lastPass && p.phase == "running") {
+                        log("精简第 ${p.pass} 轮开始，本轮待测 ${p.total} 个子网")
+                        lastPass = p.pass
+                    }
+                    _compactState.update {
+                        it.copy(
+                            phase = p.phase,
+                            stopRequested = p.stopRequested,
+                            pass = p.pass,
+                            current = p.current,
+                            total = p.total,
+                            found = p.found,
+                            percent = p.percent.toFloatOrNull() ?: 0f,
+                            status = p.status,
+                            logs = p.logs,
+                            message = p.message,
+                        )
+                    }
+                    if (p.phase == "done" || p.phase == "error") break
+                }
+                val result = current.takeResult()
+                if (result != null && result.content.isNotBlank()) {
+                    if (compactLibrary.write(result.content)) {
+                        log("精简完成：保留 ${result.count} 个 /24 子网，已覆盖 ${result.file}")
+                        _compactState.update {
+                            it.copy(running = false, phase = "done", doneCount = result.count, libCount = result.count)
+                        }
+                        // 对齐 CFData：覆盖 ips-v4.txt 后续扫描直接使用
+                        updateSettings { it.copy(officialUseCompactLib = true) }
+                    } else {
+                        _compactState.update { it.copy(running = false, phase = "error", message = "写入精简地址库失败") }
+                    }
+                } else {
+                    val msg = _compactState.value.message ?: "精简结束，但没有得到结果"
+                    log(msg)
+                    _compactState.update { it.copy(running = false) }
+                }
+            } catch (e: CancellationException) {
+                runCatching { current.stop() }
+                _compactState.update { it.copy(running = false) }
+                throw e
+            } catch (e: Exception) {
+                _compactState.update { it.copy(running = false, phase = "error", message = "精简失败：${e.message}") }
+            } finally {
+                compactSession = null
+                runCatching { current.close() }
+            }
+        }
+    }
+
+    /** 协作式停止精简（已保留子网仍会落盘） */
+    fun stopCompact() {
+        compactSession?.stop()
+    }
+
+    /** 删除本地精简地址库并关闭「使用精简地址库」 */
+    fun deleteCompactLibrary() {
+        compactLibrary.delete()
+        updateSettings { it.copy(officialUseCompactLib = false) }
+        _compactState.update { it.copy(libCount = 0, doneCount = null) }
+        log("已删除本地精简地址库")
+    }
+
+    private var compactJob: Job? = null
+
+    // ------------------------------------------------------ 自动上传
+
+    /**
+     * 任务完成后按当前模式的自动上传账户上传结果（对齐 CFData autoUploadResults：
+     * GitHub 账户 + txt/csv 格式 + 路径扩展名跟随格式 + 去重）。
+     */
+    private fun maybeAutoUpload(official: Boolean) {
+        if (autoUploadDone) return
+        val s = _settings.value
+        val choice = if (official) s.officialAutoUpload else s.nsbAutoUpload
+        if (choice == UiSettings.UPLOAD_OFF) return
+        val rows = _uiState.value.results
+        if (rows.isEmpty()) {
+            log("自动上传跳过：没有可上传结果")
+            return
+        }
+        val gh = githubStore.load()
+        if (gh.token.isBlank() || gh.owner.isBlank() || gh.repo.isBlank()) {
+            log("自动上传失败：GitHub 账户缺少 Token/仓库配置（在导出面板配置）")
+            return
+        }
+        autoUploadDone = true
+        val format = if (choice == UiSettings.UPLOAD_GITHUB_CSV) "csv" else "txt"
+        viewModelScope.launch(Dispatchers.IO) {
+            val options = if (format == "csv") {
+                ExportFormatter.ExportOptions(fields = ExportFormatter.DEFAULT_CSV_FIELDS)
+            } else {
+                ExportFormatter.ExportOptions(fields = ExportFormatter.DEFAULT_TXT_FIELDS)
+            }
+            val content = ExportFormatter.build(rows, format, options)
+            // 对齐 CFData：上传路径扩展名跟随格式
+            val path = gh.path.replace(Regex("\\.(csv|txt)$", RegexOption.IGNORE_CASE), ".$format")
+            log("自动上传已提交：${gh.owner}/${gh.repo} · $format · $path")
+            GithubClient.upload(
+                token = gh.token,
+                owner = gh.owner,
+                repo = gh.repo,
+                branch = gh.branch,
+                path = path,
+                message = gh.message,
+                content = content,
+            )
+                .onSuccess { log("自动上传完成：$it") }
+                .onFailure { log("自动上传失败：${it.message}") }
+        }
     }
 
     /** 防重复打印停止日志 */

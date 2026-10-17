@@ -19,11 +19,13 @@ use std::ptr;
 
 use jni_sys as jni;
 
+use crate::compact::{CompactSession, COMPACT_ERROR};
 use crate::engine::Engine;
 use crate::ffi::{
-    cfst_abi_version, cfst_engine_create, cfst_engine_destroy, cfst_engine_phase,
-    cfst_engine_poll, cfst_engine_start, cfst_engine_stop, cfst_engine_take_result,
-    cfst_string_free,
+    cfst_abi_version, cfst_compact_create, cfst_compact_destroy, cfst_compact_phase,
+    cfst_compact_poll, cfst_compact_start, cfst_compact_stop, cfst_compact_take_result,
+    cfst_engine_create, cfst_engine_destroy, cfst_engine_phase, cfst_engine_poll,
+    cfst_engine_start, cfst_engine_stop, cfst_engine_take_result, cfst_string_free,
 };
 
 type VTable = jni::JNINativeInterface_;
@@ -220,15 +222,16 @@ pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_enginePhase(
 
 /// poll / take_result 共用主体：调 C 函数拿 C 字符串 → 拷贝进 Java ByteArray
 /// → 立即 `cfst_string_free` → 返回数组指针（失败/空返回 NULL）。
-fn take_string_as_array(
+/// 泛型参数 T 同时兼容 Engine / CompactSession 两类不透明句柄。
+fn take_string_as_array<T>(
     env: *mut jni::JNIEnv,
-    engine: jni::jlong,
-    f: extern "C" fn(*mut Engine) -> *mut c_char,
+    ptr: jni::jlong,
+    f: extern "C" fn(*mut T) -> *mut c_char,
 ) -> jni::jobject {
-    if engine == 0 {
+    if ptr == 0 {
         return ptr::null_mut();
     }
-    let out = match catch_unwind(|| f(engine as *mut Engine)) {
+    let out = match catch_unwind(|| f(ptr as *mut T)) {
         Ok(out) if !out.is_null() => out,
         _ => return ptr::null_mut(),
     };
@@ -282,4 +285,150 @@ pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_engineDestroy(
         return;
     }
     let _ = catch_unwind(|| cfst_engine_destroy(engine as *mut Engine));
+}
+
+// ================================================================ compact
+// 地址库精简会话（CompactSession），句柄语义与 engine 系列完全一致。
+
+/// Kotlin: `external fun compactCreate(configJson: ByteArray, errOut: ByteArray): Long`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactCreate(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    config_json: jni::jbyteArray,
+    err_out: jni::jbyteArray,
+) -> jni::jlong {
+    catch_unwind(AssertUnwindSafe(|| compact_create_inner(env, config_json, err_out)))
+        .unwrap_or(0)
+}
+
+fn compact_create_inner(
+    env: *mut jni::JNIEnv,
+    config_json: jni::jbyteArray,
+    err_out: jni::jbyteArray,
+) -> jni::jlong {
+    if config_json.is_null() {
+        return 0;
+    }
+    let config = jni_read_array(env, config_json);
+    let trimmed = match config.iter().position(|&b| b == 0) {
+        Some(pos) => &config[..pos],
+        None => &config[..],
+    };
+    let c_config = match CString::new(trimmed) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    // 错误缓冲与 engineCreate 同一策略：空数组退化为 NULL
+    let cap = if err_out.is_null() {
+        0usize
+    } else {
+        let Some(len_fn) = functions(env).GetArrayLength else {
+            return 0;
+        };
+        // SAFETY: err_out 为 JVM 传入的有效局部引用
+        unsafe { len_fn(env, err_out as jni::jarray).max(0) as usize }
+    };
+    let mut err_buf: Vec<c_char> = vec![0 as c_char; cap];
+    let (err_ptr, err_cap) = if cap > 0 {
+        (err_buf.as_mut_ptr(), cap)
+    } else {
+        (ptr::null_mut(), 0usize)
+    };
+
+    let session = cfst_compact_create(c_config.as_ptr(), err_ptr, err_cap as i32);
+    if session.is_null() && !err_ptr.is_null() {
+        let bytes =
+            unsafe { std::slice::from_raw_parts(err_ptr as *const u8, err_cap) };
+        if let Some(n) = bytes.iter().position(|&b| b == 0) {
+            if let Some(region_fn) = functions(env).SetByteArrayRegion {
+                // SAFETY: 写入区间 n 不超过 err_out 容量 err_cap
+                unsafe {
+                    region_fn(env, err_out, 0, n as jni::jsize, bytes.as_ptr() as *const jni::jbyte);
+                }
+            }
+        }
+    }
+    session as jni::jlong
+}
+
+/// Kotlin: `external fun compactStart(ptr: Long): Boolean`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactStart(
+    _env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    session: jni::jlong,
+) -> jni::jboolean {
+    if session == 0 {
+        return 0;
+    }
+    let started = catch_unwind(|| cfst_compact_start(session as *mut CompactSession));
+    u8::from(started.unwrap_or(false))
+}
+
+/// Kotlin: `external fun compactPhase(ptr: Long): Int`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactPhase(
+    _env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    session: jni::jlong,
+) -> jni::jint {
+    if session == 0 {
+        return 0;
+    }
+    catch_unwind(|| cfst_compact_phase(session as *mut CompactSession))
+        .unwrap_or(COMPACT_ERROR) as jni::jint
+}
+
+/// Kotlin: `external fun compactStop(ptr: Long)`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactStop(
+    _env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    session: jni::jlong,
+) {
+    if session == 0 {
+        return;
+    }
+    let _ = catch_unwind(|| cfst_compact_stop(session as *mut CompactSession));
+}
+
+/// Kotlin: `external fun compactPoll(ptr: Long): ByteArray?`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactPoll(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    session: jni::jlong,
+) -> jni::jobject {
+    catch_unwind(AssertUnwindSafe(|| {
+        take_string_as_array(env, session, cfst_compact_poll)
+    }))
+    .unwrap_or(ptr::null_mut())
+}
+
+/// Kotlin: `external fun compactTakeResult(ptr: Long): ByteArray?`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactTakeResult(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    session: jni::jlong,
+) -> jni::jobject {
+    catch_unwind(AssertUnwindSafe(|| {
+        take_string_as_array(env, session, cfst_compact_take_result)
+    }))
+    .unwrap_or(ptr::null_mut())
+}
+
+/// Kotlin: `external fun compactDestroy(ptr: Long)`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_masgzy_cfstmobile_ffi_CfstFfi_compactDestroy(
+    _env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    session: jni::jlong,
+) {
+    if session == 0 {
+        return;
+    }
+    let _ = catch_unwind(|| cfst_compact_destroy(session as *mut CompactSession));
 }
