@@ -1,5 +1,6 @@
 package com.masgzy.cfstmobile.data
 
+import com.masgzy.cfstmobile.model.ProtocolJson
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
