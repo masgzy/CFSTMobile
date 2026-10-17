@@ -18,6 +18,11 @@
 pub mod engine;
 pub mod ffi;
 
+/// JNI 桥接（仅 Android 目标编译）：为 Kotlin `external fun` 提供
+/// `Java_com_masgzy_cfstmobile_ffi_CfstFfi_*` 符号，字符串走 ByteArray 策略。
+#[cfg(target_os = "android")]
+mod jni_bridge;
+
 mod args;
 mod common;
 mod csv;

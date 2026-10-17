@@ -80,30 +80,32 @@ create ──► start ──► poll(250ms 轮询) ──► phase==done ──
 - 引擎运行在专属线程 + 专属 tokio runtime（2 worker），不依赖调用方线程环境。
 - 传给 `create` 的 JSON 必须以 `\0` 结尾（C 字符串）。
 
-### Kotlin 侧声明示例
+### Kotlin 侧声明示例（已实现，见 app/ 的 CfstFfi）
 
 ```kotlin
 object CfstFfi {
     init { System.loadLibrary("cfst") }
 
     external fun abiVersion(): Int
-    external fun engineCreate(configJson: String, errOut: ByteArray, errCap: Int): Long
-    external fun engineStart(engine: Long): Boolean
-    external fun enginePhase(engine: Long): Int
-    external fun engineStop(engine: Long)
-    external fun enginePoll(engine: Long): String?      // 读完自行 stringFree
-    external fun engineTakeResult(engine: Long): String?
-    external fun engineDestroy(engine: Long)
-    external fun stringFree(ptr: String)                // 见下方注意事项
+    // 配置/错误均走 UTF-8 ByteArray（绕开 JNI Modified-UTF-8 差异）；
+    // 失败返回 0，错误消息写回 errOut（截去尾部 NUL 即消息本身）
+    external fun engineCreate(configJson: ByteArray, errOut: ByteArray): Long
+    external fun engineStart(ptr: Long): Boolean
+    external fun enginePhase(ptr: Long): Int
+    external fun engineStop(ptr: Long)
+    // 进度/结果以 UTF-8 ByteArray 返回（JNI 层拷贝后立即释放 C 字符串，
+    // 无悬垂风险）；NULL 引擎句柄或暂无数据时返回 null
+    external fun enginePoll(ptr: Long): ByteArray?
+    external fun engineTakeResult(ptr: Long): ByteArray?
+    external fun engineDestroy(ptr: Long)
 }
 ```
 
-> 字符串释放的两种实现策略（二选一，需与 Kotlin 侧约定一致）：
+> 字符串释放策略（已采用 1，由 `src/jni_bridge.rs` 实现）：
 > 1. Kotlin 用 `ByteArray` 接收 poll 结果：JNI 层读指针 → 拷贝进 ByteArray →
->    立即 `cfst_string_free` → 返回 ByteArray（推荐，无悬垂风险）；
+>    立即 `cfst_string_free` → 返回 ByteArray（无悬垂风险，Kotlin 无需手动释放）；
 > 2. Kotlin 声明返回 `String?` 并配 `external fun stringFree(ptr: Long)`，
->    此时需要额外的 `cfst_string_handle` 风格接口（当前 ABI 暂未提供，
->    建议 v1 采用策略 1）。
+>    此时需要额外的 `cfst_string_handle` 风格接口（当前 ABI 暂未提供）。
 
 ---
 
@@ -204,6 +206,7 @@ engine/
 ├── src/
 │   ├── lib.rs            # 库入口（Android 用）
 │   ├── ffi.rs            # C ABI 导出（cfst_*）
+│   ├── jni_bridge.rs     # JNI 桥接（仅 Android 编译：Java_ 符号 → ByteArray 策略）
 │   ├── engine.rs         # 配置/状态机/runner（含单元测试）
 │   ├── metrics.rs        # 下载阶段结构化指标
 │   ├── log.rs            # 共享日志助手
