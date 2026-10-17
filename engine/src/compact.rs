@@ -163,6 +163,14 @@ pub struct CompactSession {
     shared: Arc<CompactShared>,
 }
 
+impl std::fmt::Debug for CompactSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompactSession")
+            .field("phase", &self.phase())
+            .finish_non_exhaustive()
+    }
+}
+
 impl CompactSession {
     /// 解析配置并展开 /24 子网集合。同步、快速（纯 CPU 解析）。
     pub fn create(config_json: &str) -> Result<CompactSession, String> {
