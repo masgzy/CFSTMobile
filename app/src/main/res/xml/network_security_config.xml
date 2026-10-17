@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 明文放行仅用于：
+         1) 部分镜像站的 GitHub Raw 代理（IP 段列表获取走 OkHttp/HttpURLConnection）；
+         2) 自定义 http 下载测速 URL 的可读性提示（引擎测速走 native socket，
+            不受 usesCleartextTraffic 约束，但保持全局一致策略便于排查）。 -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">speed.cloudflare.com</domain>
+        <domain includeSubdomains="true">cloudflare.com</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">raw.githubusercontent.com</domain>
+        <domain includeSubdomains="true">ghps.cc</domain>
+        <domain includeSubdomains="true">gh-proxy.com</domain>
+        <domain includeSubdomains="true">ghfast.top</domain>
+        <domain includeSubdomains="true">ghproxy.vip</domain>
+    </domain-config>
+</network-security-config>
