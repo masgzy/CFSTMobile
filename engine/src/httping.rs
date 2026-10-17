@@ -170,11 +170,15 @@ pub(crate) fn new(base: BasePing) -> Option<CommonPing> {
     common::print_speed_test_info("HTTPing", &args);
 
     let tls_connector = crate::hyper::build_tls_connector().unwrap();
+    // TTFB 超时下限需覆盖「延迟上限 × HTTPing 倍率」（端口逐目标而异，取上界 4.0），
+    // 否则 TLS 目标在 200~800ms 区间的合格结果会先被超时截断而非交给过滤器判定
+    let scaled_max_delay_ms = (args.max_delay.as_millis() as f32
+        * crate::common::MAX_HTTPING_MULTIPLIER) as u64;
     let request_context = Arc::new(RequestContext {
         interface_config: args.interface_config.clone(),
         tls_connector,
         connect_timeout_ms: crate::common::CONNECT_TIMEOUT_MS,
-        ttfb_timeout_ms: crate::common::TTFB_TIMEOUT_MS.max(args.max_delay.as_millis() as u64),
+        ttfb_timeout_ms: crate::common::TTFB_TIMEOUT_MS.max(scaled_max_delay_ms),
     });
 
     let factory_data = HttpingFactoryData {

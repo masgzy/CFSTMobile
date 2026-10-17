@@ -335,10 +335,34 @@ pub(crate) fn is_colo_matched(data_center: &str, colo_filters: &[String]) -> boo
             || colo_filters.iter().any(|f| f.eq_ignore_ascii_case(data_center)))
 }
 
+/// TLS 端口判定（与 CFData-WEB tasks_speed.go isTLSPort 一致）
+pub(crate) fn is_tls_port(port: u16) -> bool {
+    matches!(port, 443 | 2053 | 2083 | 2087 | 2096 | 8443)
+}
+
+/// HTTPing 延迟倍率（对齐 CFData-WEB types.go latencyMultiplier）：
+/// TCPing/ICMP 恒为 1.0；HTTPing 走 TLS 握手（×4.0）或明文（×1.3）时
+/// TTFB 天然高于纯 TCP 拨号，延迟上限阈值按倍率放宽，显示值仍为原始延迟。
+pub(crate) fn latency_multiplier(is_httping: bool, port: u16) -> f32 {
+    if !is_httping {
+        return 1.0;
+    }
+    if is_tls_port(port) {
+        4.0
+    } else {
+        1.3
+    }
+}
+
+/// HTTPing 倍率上界（4.0），供共享超时下限计算使用（端口逐目标而异时取最宽值）
+pub(crate) const MAX_HTTPING_MULTIPLIER: f32 = 4.0;
+
 pub(crate) fn should_keep_result(data: &PingData, args: &Args) -> bool {
+    let mul = latency_multiplier(args.httping.is_some(), data.addr.port());
+    let max_delay_ms = args.max_delay.as_millis() as f32 * mul;
     data.loss_rate() <= args.max_loss_rate
         && data.delay >= args.min_delay.as_millis() as f32
-        && data.delay <= args.max_delay.as_millis() as f32
+        && data.delay <= max_delay_ms
 }
 
 pub(crate) fn sort_results(results: &mut [PingData]) {
@@ -394,4 +418,83 @@ pub(crate) fn update_progress_bar(
     total_ips: usize,
 ) {
     bar.update(current_tested, format!("{}/{}", current_tested, total_ips), success_count.to_string());
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    fn addr(p: u16) -> SocketAddr {
+        format!("1.2.3.4:{p}").parse().unwrap()
+    }
+
+    fn data(p: u16, delay: f32) -> PingData {
+        PingData::new(addr(p), 4, 4, delay)
+    }
+
+    #[test]
+    fn tls_port_list_matches_cfdata() {
+        for p in [443u16, 2053, 2083, 2087, 2096, 8443] {
+            assert!(is_tls_port(p), "{p} 应判定为 TLS 端口");
+        }
+        for p in [80u16, 8080, 2052, 2082, 2086, 2095, 8880] {
+            assert!(!is_tls_port(p), "{p} 不应判定为 TLS 端口");
+        }
+    }
+
+    #[test]
+    fn multiplier_scales_only_httping() {
+        // 非 httping 恒为 1.0（含 TLS 端口）
+        for p in [443u16, 80, 8443] {
+            assert_eq!(latency_multiplier(false, p), 1.0);
+        }
+        assert_eq!(latency_multiplier(true, 443), 4.0);
+        assert_eq!(latency_multiplier(true, 8443), 4.0);
+        assert_eq!(latency_multiplier(true, 80), 1.3);
+        assert_eq!(latency_multiplier(true, 8080), 1.3);
+    }
+
+    #[test]
+    fn keep_result_tcping_uses_raw_threshold() {
+        let mut args = Args::new();
+        args.max_delay = Duration::from_millis(200);
+        args.disable_download = true;
+        // tcping：阈值不放宽
+        assert!(should_keep_result(&data(443, 199.0), &args));
+        assert!(!should_keep_result(&data(443, 201.0), &args));
+    }
+
+    #[test]
+    fn keep_result_httping_tls_scales_x4() {
+        let mut args = Args::new();
+        args.max_delay = Duration::from_millis(200);
+        args.httping = Some("https://speed.cloudflare.com/__down".into());
+        args.disable_download = true;
+        // TLS 端口：有效阈值 = 200 × 4.0 = 800ms（对齐 CFData effectiveDelay）
+        assert!(should_keep_result(&data(443, 799.0), &args));
+        assert!(!should_keep_result(&data(443, 801.0), &args));
+    }
+
+    #[test]
+    fn keep_result_httping_plain_scales_x13() {
+        let mut args = Args::new();
+        args.max_delay = Duration::from_millis(200);
+        args.httping = Some("http://speed.cloudflare.com/__down".into());
+        args.disable_download = true;
+        // 明文端口：有效阈值 = 200 × 1.3 = 260ms
+        assert!(should_keep_result(&data(80, 259.0), &args));
+        assert!(!should_keep_result(&data(80, 261.0), &args));
+    }
+
+    #[test]
+    fn keep_result_min_delay_not_scaled() {
+        let mut args = Args::new();
+        args.min_delay = Duration::from_millis(100);
+        args.max_delay = Duration::from_millis(2000);
+        args.httping = Some("https://speed.cloudflare.com/__down".into());
+        args.disable_download = true;
+        // 下限不放宽：TLS httping 下 50ms 仍被过滤
+        assert!(!should_keep_result(&data(443, 50.0), &args));
+    }
 }

@@ -131,8 +131,8 @@ snake_case；全部字段可缺省，缺省值与上游 CLI 默认一致。
 | `print_num` | Int? | `10` | 结果保留数量上限 |
 | `ping_times` | Int? | `4` | 每 IP 延迟测速次数 |
 | `max_threads` | Int? | `256` | 并发上限（1~1024；Android 建议 64~256） |
-| `min_delay_ms` | Int? | `0` | 延迟下限（0~2000，不得大于 max_delay_ms） |
-| `max_delay_ms` | Int? | `2000` | 延迟上限（0~2000） |
+| `min_delay_ms` | Int? | `0` | 延迟下限（0~2000，不得大于 max_delay_ms；不随倍率放宽） |
+| `max_delay_ms` | Int? | `2000` | 延迟上限（0~2000）；HTTPing 模式按端口自动放宽：TLS 端口（443/2053/2083/2087/2096/8443）×4.0、明文端口×1.3（对齐 CFData-WEB latencyMultiplier，显示值仍为原始 TTFB） |
 | `max_loss_rate` | Float? | `1.0` | 丢包率上限（0.0~1.0） |
 | `global_timeout_secs` | Int? | `null` | 全局超时，到时结算已有结果并结束 |
 | `test_all_ipv4` | Bool | `false` | 测试 CIDR 全部 IPv4（否则按前缀采样） |
