@@ -66,12 +66,13 @@ jobs:
           zip -r "cfst-engine-$VERSION-jniLibs.zip" jniLibs
           ls -lh "cfst-engine-$VERSION-jniLibs.zip"
 
-      # upload-artifact v7：单文件直传（archive: false），供 android-apk job 复用
+      # upload-artifact v7 打包模式：artifact 名 = name 参数（注意 archive: false
+      # 直传模式下 artifact 注册名会变成文件名本身，下游按 name 下载会 404），
+      # 供 android-apk job 的 download-artifact@v8 复用（自动解压出 jniLibs zip）
       - name: 上传 jniLibs zip
         uses: actions/upload-artifact@v7
         with:
           name: cfst-engine-jniLibs
-          archive: false
           path: app/src/main/cfst-engine-*-jniLibs.zip
 
       - name: 发布引擎 .so 到 GitHub Releases
