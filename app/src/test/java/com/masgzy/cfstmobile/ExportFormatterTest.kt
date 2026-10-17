@@ -110,7 +110,7 @@ class ExportFormatterTest {
         )
         // 空速度列与空数据中心均跳过；数值保留两位小数
         assertEquals("2.2.2.2:443#88.88\n", ExportFormatter.build(listOf(item(ip = "2.2.2.2", colo = null, speed = null)), "txt", opts))
-        assertEquals("1.1.1.1:443#88.88-12.35-LAX\n", ExportFormatter.build(rows.take(1), "txt", opts.copy(txtSeparator = "-")))
+        assertEquals("1.1.1.1:443#88.88-12.35-HKG\n", ExportFormatter.build(rows.take(1), "txt", opts.copy(txtSeparator = "-")))
     }
 
     @Test
