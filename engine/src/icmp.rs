@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU16, Ordering};
 use surge_ping::{Client, Config, PingIdentifier, PingSequence, ICMP};
 
-use crate::common::{self, PingData, BasePing, Ping as CommonPing, PingMode};
+use crate::common::{self, PingData, Target, BasePing, Ping as CommonPing, PingMode};
 use crate::pool::Limiter;
 
 static PING_IDENTIFIER_COUNTER: AtomicU16 = AtomicU16::new(0);
@@ -21,9 +21,10 @@ impl PingMode for IcmpingFactoryData {
     fn run_test(
         &self,
         base: BasePing,
-        addr: SocketAddr,
+        target: Target,
     ) -> Pin<Box<dyn Future<Output = Option<PingData>> + Send>> {
         let args = base.args.clone();
+        let addr = target.addr;
         let ip = addr.ip();
         let client = match ip {
             IpAddr::V4(_) => self.client_v4.clone(),
@@ -32,7 +33,7 @@ impl PingMode for IcmpingFactoryData {
         let limiter = self.limiter.clone();
         let args_for_closure = args.clone();
 
-        Box::pin(common::ping_one(args, addr, 0, move || {
+        Box::pin(common::ping_one(args, target, 0, move || {
             let client = client.clone();
             let limiter = limiter.clone();
             let args = args_for_closure.clone();

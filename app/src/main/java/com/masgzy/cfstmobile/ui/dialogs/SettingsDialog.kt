@@ -113,7 +113,7 @@ fun SettingsDialog(viewModel: TestViewModel, onDismiss: () -> Unit) {
                     OutlinedTextField(
                         value = settings.customIpText,
                         onValueChange = { text -> viewModel.updateSettings { it.copy(customIpText = text) } },
-                        label = { Text("自定义 IP / CIDR（每行一个，支持 1.2.3.4/24=50 定量采样）") },
+                        label = { Text("自定义 IP / 域名（每行一个：CIDR、IP[:端口]、域名[:端口]）") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 3,
                         maxLines = 6,

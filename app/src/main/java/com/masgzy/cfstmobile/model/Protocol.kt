@@ -95,6 +95,8 @@ data class CfstResultItem(
     @SerialName("download_speed_mbps") val downloadSpeedMbps: Double? = null,
     /** 数据中心识别（httping 模式下引擎返回，可为 null） */
     @SerialName("colo") val colo: String? = null,
+    /** 非标优选：域名条目解析展开时保留的原始输入（如 vip.example.com）；纯 IP 条目为 null */
+    @SerialName("origin") val origin: String? = null,
 ) {
     /** 复制到剪贴板用（IP:端口，代理软件可直接粘贴） */
     fun address(): String = "$ip:$port"

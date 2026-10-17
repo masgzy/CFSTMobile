@@ -387,6 +387,7 @@ impl Engine {
                 serde_json::json!({
                     "ip": d.addr.ip().to_string(),
                     "port": d.addr.port(),
+                    "origin": d.origin.as_ref().map(|s| s.to_string()),
                     "sent": d.sent,
                     "received": d.received,
                     "loss_rate": d.loss_rate() as f64,
@@ -471,7 +472,11 @@ async fn run_async(
         });
     }
 
-    let base = crate::common::create_base_ping(args.clone(), shared.sources.clone(), stop.clone());
+    let base = crate::common::create_base_ping(args.clone(), shared.sources.clone(), stop.clone()).await;
+    if base.ip_buffer.total_expected() == 0 {
+        signal_error(shared, "所有域名均解析失败或输入均无效，没有可测试的目标".to_string());
+        return Vec::new();
+    }
     {
         let mut slot = shared.ping.lock().unwrap();
         *slot = Some(PingProgress {
@@ -603,5 +608,14 @@ mod tests {
             .to_args()
             .unwrap_err();
         assert!(err.contains("ICMP"), "actual: {err}");
+    }
+
+    #[test]
+    fn config_accepts_domain_entries() {
+        // 域名条目在 create 阶段只收集不解析（解析在 start 后的引擎线程），
+        // 因此离线也能创建成功
+        let cfg = r#"{"ip_text":"speed.example.com:2053,cache.example.com,1.2.3.4:8443","disable_download":true}"#;
+        let engine = Engine::create(cfg);
+        assert!(engine.is_ok(), "域名条目不应在 create 阶段被拒绝");
     }
 }
