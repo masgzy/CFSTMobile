@@ -259,7 +259,10 @@ fn generate_refined_random(obj_addr: usize) -> u128 {
     lo = lo.rotate_left(usize::BITS / 2);
     lo = lo.swap_bytes();
 
-    let mut hi = lo.wrapping_mul(0x9E3779B97F4A7C15_usize);
+    // 黄金比例常量按 u64 书写再 cast：32 位目标（armv7）的 usize 放不下
+    // 64 位字面量会触发 overflowing_literals 硬错误；cast 截断仅影响
+    // 32 位平台的散列质量（此处只是 IP 采样偏移的扰码器，可接受）
+    let mut hi = lo.wrapping_mul(0x9E3779B97F4A7C15_u64 as usize);
     hi = hi.rotate_left(usize::BITS / 4);
     hi = hi.swap_bytes();
     hi ^= s;
