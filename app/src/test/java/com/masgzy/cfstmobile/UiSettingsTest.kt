@@ -238,7 +238,6 @@ class UiSettingsTest {
             ).validate(),
         )
     }
-}
 
     // ---------------------------------------------------------------- sanitized（非标手动列表官方段清洗）
 
@@ -275,3 +274,4 @@ class UiSettingsTest {
         val s = UiSettings()
         assertEquals(s, s.sanitized())
     }
+}
