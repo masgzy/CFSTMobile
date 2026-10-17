@@ -19,9 +19,6 @@ jobs:
     name: Rust 引擎（单测 + Android 交叉编译冒烟）
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # ubuntu-latest 预装最新 NDK，ANDROID_NDK_LATEST_HOME 指向其根目录
-      ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
     steps:
       - uses: actions/checkout@v7
 
@@ -55,15 +52,21 @@ jobs:
       - name: 校验 16KB 页对齐（Android 15+ 加载要求）
         run: |
           cd engine
-          READER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          # runner 预装 NDK 由 ANDROID_NDK_LATEST_HOME 提供（shell 环境变量）
+          for base in "$ANDROID_NDK_LATEST_HOME" "$ANDROID_NDK_HOME"; do
+            READER="$base/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            [ -x "$READER" ] && break
+          done
           [ -x "$READER" ] || READER=readelf
+          FAIL=0
           for so in target/*/debug/libcfst.so; do
             echo "== $so"
-            # LOAD 段 Align 列应 >= 0x4000 (16384)
-            "$READER" -l "$so" | grep LOAD | awk '{print "  Align:", $NF}'
-            "$READER" -l "$so" | grep LOAD | awk '{if ($NF+0 < 16384) exit 1}' \
-              || { echo "::error::$so 未按 16KB 对齐"; exit 1; }
+            # LOAD 段 Align 列（十六进制）应 >= 0x4000；strtonum 可解析 0x 前缀
+            "$READER" -l "$so" | grep LOAD | awk '{print "  Align:", $NF, "(" strtonum($NF) ")"}'
+            "$READER" -l "$so" | grep LOAD | awk '{if (strtonum($NF) < 16384) exit 1}' \
+              || { echo "::error::$so 未按 16KB 对齐"; FAIL=1; }
           done
+          exit $FAIL
 
   # App 工程落地后自动启用（当前仓库尚无 app/，此 job 自动跳过）
   app:
