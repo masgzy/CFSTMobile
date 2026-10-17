@@ -85,7 +85,7 @@ data class UiSettings(
         ipSource == SOURCE_BUILTIN && selectedSegments.isEmpty() ->
             "请至少选择一个内置 IP 段"
         ipSource == SOURCE_CUSTOM && customIpText.isBlank() ->
-            "自定义 IP 来源为空（支持 CIDR / 单 IP，每行一个）"
+            "自定义 IP 来源为空（支持 CIDR / 单 IP / 域名[:端口]，每行一个）"
         enableDownload && downloadUrl.isBlank() -> "启用下载测速时必须填写测速 URL"
         else -> null
     }

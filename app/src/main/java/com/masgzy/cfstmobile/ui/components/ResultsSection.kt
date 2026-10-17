@@ -118,6 +118,13 @@ private fun ResultItem(rank: Int, item: CfstResultItem) {
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                 )
+                if (!item.origin.isNullOrBlank()) {
+                    Text(
+                        text = "原始输入：${item.origin}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = buildString {
                         append("${fmt1(item.lossRate * 100)}% 丢包")

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::hyper::{parse_url_to_uri, HttpConnection, RequestContext};
-use crate::common::{self, PingData, BasePing, Ping as CommonPing, PingMode};
+use crate::common::{self, PingData, Target, BasePing, Ping as CommonPing, PingMode};
 use crate::pool::Limiter;
 
 #[derive(Clone)]
@@ -23,7 +23,7 @@ impl common::PingMode for HttpingFactoryData {
     fn run_test(
         &self,
         base: BasePing,
-        addr: SocketAddr,
+        target: Target,
     ) -> Pin<Box<dyn Future<Output = Option<PingData>> + Send>> {
         let args = base.args.clone();
         let colo_filters = self.colo_filters.clone();
@@ -40,7 +40,7 @@ impl common::PingMode for HttpingFactoryData {
                 request_context,
                 host_header,
                 original_uri,
-                addr,
+                addr: target.addr,
                 colo_filters,
                 allowed_codes,
                 should_continue: AtomicBool::new(true),
@@ -69,7 +69,7 @@ impl common::PingMode for HttpingFactoryData {
 
             let avg_delay = common::calculate_precise_delay(total_delay_ms, recv);
             let data_center = task.local_data_center.get().cloned();
-            common::build_ping_data_result(addr, ping_times, recv, avg_delay, data_center)
+            common::build_ping_data_result(target, ping_times, recv, avg_delay, data_center)
         })
     }
 

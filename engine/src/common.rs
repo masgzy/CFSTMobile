@@ -20,9 +20,19 @@ pub(crate) const ROUNDING_PRECISION: f32 = 100.0;
 /// 1 MB 对应的字节数
 pub(crate) const BYTES_PER_MB: f32 = 1024.0 * 1024.0;
 
-#[derive(Clone, Copy, Debug)]
+/// 一个测试目标：直连地址 + 可选的原始输入（域名条目解析而来）。
+/// `origin` 用于结果展示与导出时回溯用户输入（对齐 CFData 非标模式）。
+#[derive(Clone, Debug)]
+pub(crate) struct Target {
+    pub(crate) addr: SocketAddr,
+    pub(crate) origin: Option<Arc<str>>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct PingData {
     pub(crate) addr: SocketAddr,
+    /// 原始输入（域名条目解析展开时携带；纯 IP 条目为 None）
+    pub(crate) origin: Option<Arc<str>>,
     pub(crate) sent: u16,
     pub(crate) received: u16,
     pub(crate) delay: f32,
@@ -34,6 +44,7 @@ impl PingData {
     pub(crate) fn new(addr: SocketAddr, sent: u16, received: u16, delay: f32) -> Self {
         Self {
             addr,
+            origin: None,
             sent,
             received,
             delay,
@@ -131,10 +142,21 @@ pub(crate) fn colo_opt_to_str(opt: Option<&[u8; 3]>) -> &str {
     opt.map_or("", colo_bytes_to_str)
 }
 
-/// Ping 初始化
-pub(crate) fn create_base_ping(args: Arc<Args>, sources: Vec<String>, timeout_flag: Arc<AtomicBool>) -> BasePing {
-    let (single_ips, cidr_states, total_expected) = crate::ip::process_ip_sources(sources, &args);
-    let ip_buffer = IpBuffer::new(cidr_states, single_ips, total_expected, args.tcp_port);
+/// Ping 初始化（异步：域名条目需要先 DNS 解析展开）
+pub(crate) async fn create_base_ping(args: Arc<Args>, sources: Vec<String>, timeout_flag: Arc<AtomicBool>) -> BasePing {
+    // 域名条目先解析展开（IPv4 优先，失败域名警告跳过），其余走 IP/CIDR 管线
+    let (host_entries, ip_sources) = crate::ip::split_host_entries(&sources);
+    let (resolved_targets, _failed) =
+        crate::ip::resolve_host_entries(host_entries, args.tcp_port).await;
+    let (ip_targets, cidr_states, ip_expected) =
+        crate::ip::process_ip_sources(ip_sources, &args);
+
+    // 总期望 = IP/CIDR 期望数 + 域名展开后的实际目标数
+    let total_expected = ip_expected + resolved_targets.len();
+    let mut targets = resolved_targets;
+    targets.extend(ip_targets);
+
+    let ip_buffer = IpBuffer::new(targets, cidr_states, total_expected, args.tcp_port);
     let limiter = Arc::new(Limiter::new(args.max_threads));
 
     BasePing::new(
@@ -176,7 +198,7 @@ where
 /// 通用 ping 编排：循环探测 + 构建结果（无 colo）
 pub(crate) async fn ping_one<F, Fut>(
     args: Arc<Args>,
-    addr: SocketAddr,
+    target: Target,
     wait_ms: u64,
     test_fn: F,
 ) -> Option<PingData>
@@ -186,14 +208,20 @@ where
 {
     let ping_times = args.ping_times;
     let (avg_delay, recv) = run_ping_loop(ping_times, wait_ms, test_fn).await;
-    build_ping_data_result(addr, ping_times, recv, avg_delay.unwrap_or(0.0), None)
+    build_ping_data_result(
+        target,
+        ping_times,
+        recv,
+        avg_delay.unwrap_or(0.0),
+        None,
+    )
 }
 
 pub(crate) trait PingMode: Send + 'static {
     fn run_test(
         &self,
         base: BasePing,
-        addr: SocketAddr,
+        target: Target,
     ) -> Pin<Box<dyn Future<Output = Option<PingData>> + Send>>;
     
     fn clone_box(&self) -> Box<dyn PingMode>;
@@ -205,9 +233,10 @@ impl Clone for Box<dyn PingMode> {
     }
 }
 
-pub(crate) fn build_ping_data_result(addr: SocketAddr, sent: u16, received: u16, avg_delay_ms: f32, data_center: Option<[u8; 3]>) -> Option<PingData> {
+pub(crate) fn build_ping_data_result(target: Target, sent: u16, received: u16, avg_delay_ms: f32, data_center: Option<[u8; 3]>) -> Option<PingData> {
     if avg_delay_ms > 0.0 {
-        let mut data = PingData::new(addr, sent, received, avg_delay_ms);
+        let mut data = PingData::new(target.addr, sent, received, avg_delay_ms);
+        data.origin = target.origin;
         if let Some(dc) = data_center {
             data.data_center = Some(dc);
         }
@@ -255,8 +284,8 @@ pub(crate) async fn run_ping_test(
 
     (0..pool_concurrency)
         .map_while(|_| base.ip_buffer.pop())
-        .for_each(|addr| {
-            let _ = tasks.spawn(mode.run_test(base.clone(), addr));
+        .for_each(|target| {
+            let _ = tasks.spawn(mode.run_test(base.clone(), target));
         });
     
     while let Some(join_result) = tasks.join_next().await {
@@ -281,8 +310,8 @@ pub(crate) async fn run_ping_test(
         }
         update_progress_bar(bar, current_tested, current_success + success_increment, total_ips);
 
-        if let Some(addr) = base.ip_buffer.pop() {
-            let _ = tasks.spawn(mode.run_test(base.clone(), addr));
+        if let Some(target) = base.ip_buffer.pop() {
+            let _ = tasks.spawn(mode.run_test(base.clone(), target));
         }
     }
 

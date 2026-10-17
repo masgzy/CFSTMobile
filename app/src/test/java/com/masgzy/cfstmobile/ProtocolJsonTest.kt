@@ -128,4 +128,36 @@ class ProtocolJsonTest {
         assertEquals(listOf("1.0.0.1", "1.0.0.2", "1.0.0.3"), bySpeed.map { it.ip })
         assertEquals(items, byScore) // score = 引擎原始顺序
     }
+
+    // ------------------------------------------------------------ 非标优选 origin
+
+    @Test
+    fun `origin 解析为非标优选的原始输入`() {
+        val payload = """
+            {"count":1,"items":[{
+                "ip":"104.16.1.1","port":2053,"origin":"vip.example.com",
+                "sent":4,"received":4,"loss_rate":0.0,"delay_ms":42.5,
+                "download_speed_mbps":12.3,"colo":"LAX"
+            }]}
+        """.trimIndent()
+
+        val item = json.decodeFromString(CfstResult.serializer(), payload).items.single()
+        assertEquals("vip.example.com", item.origin)
+        assertEquals("104.16.1.1:2053", item.address())
+    }
+
+    @Test
+    fun `无 origin 字段的旧版载荷解析为 null（向后兼容）`() {
+        val payload = """
+            {"count":1,"items":[{
+                "ip":"1.2.3.4","port":443,
+                "sent":4,"received":3,"loss_rate":0.25,"delay_ms":180.0
+            }]}
+        """.trimIndent()
+
+        val item = json.decodeFromString(CfstResult.serializer(), payload).items.single()
+        assertNull(item.origin)
+        assertNull(item.colo)
+        assertNull(item.downloadSpeedMbps)
+    }
 }

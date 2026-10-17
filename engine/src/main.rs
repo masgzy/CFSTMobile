@@ -32,8 +32,8 @@ mod httping;
 use crate::log::{error_and_exit, info_println};
 
 /// 构建 ping 实例（CLI 用）：BasePing 在此统一创建，便于以后接进度指标
-fn create_ping(args: Arc<Args>, sources: Vec<String>, timeout_flag: Arc<AtomicBool>) -> Option<(CommonPing, BasePing)> {
-    let base = common::create_base_ping(args.clone(), sources, timeout_flag);
+async fn create_ping(args: Arc<Args>, sources: Vec<String>, timeout_flag: Arc<AtomicBool>) -> Option<(CommonPing, BasePing)> {
+    let base = common::create_base_ping(args.clone(), sources, timeout_flag).await;
     let ping = if let Some(_) = args.httping {
         httping::new(base.clone())?
     } else {
@@ -74,7 +74,7 @@ async fn main() {
         });
     }
 
-    let Some((ping, _base)) = create_ping(args.clone(), sources, timeout_flag.clone()) else {
+    let Some((ping, _base)) = create_ping(args.clone(), sources, timeout_flag.clone()).await else {
         error_and_exit(format_args!("创建测速实例失败"));
     };
     let ping_result: Vec<PingData> = ping.run().await;

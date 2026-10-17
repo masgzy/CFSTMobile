@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::common::{self, PingData, BasePing, Ping as CommonPing, PingMode};
+use crate::common::{self, PingData, Target, BasePing, Ping as CommonPing, PingMode};
 use crate::interface::{InterfaceParamResult, bind_socket_to_interface};
 use crate::pool::Limiter;
 
@@ -20,18 +20,18 @@ impl PingMode for TcpingFactoryData {
     fn run_test(
         &self,
         base: BasePing,
-        addr: SocketAddr,
+        target: Target,
     ) -> Pin<Box<dyn Future<Output = Option<PingData>> + Send>> {
         let args = base.args.clone();
         let interface_config = self.interface_config.clone();
         let limiter = self.limiter.clone();
 
-        Box::pin(common::ping_one(args, addr, common::PING_INTERVAL_MS, move || {
+        Box::pin(common::ping_one(args, target.clone(), common::PING_INTERVAL_MS, move || {
             let interface_config = interface_config.clone();
             let limiter = limiter.clone();
             async move {
                 let _permit = limiter.acquire().await;
-                tcping(addr, &interface_config).await
+                tcping(target.addr, &interface_config).await
             }
         }))
     }

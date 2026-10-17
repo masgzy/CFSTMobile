@@ -115,7 +115,7 @@ snake_case；全部字段可缺省，缺省值与上游 CLI 默认一致。
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `ip_text` | String | `""` | IP / CIDR 列表，逗号分隔（`1.1.1.1/24,8.8.8.8`，支持 `ip=数量` 定量采样） |
+| `ip_text` | String | `""` | IP / CIDR / 域名列表，逗号分隔（`1.1.1.1/24,8.8.8.8,example.com:2053`，支持 `ip=数量` 定量采样；域名条目见下方「非标优选」） |
 | `ip_file` | String | `""` | IP 列表文件路径（与 `ip_text` 至少其一） |
 | `tcp_port` | Int | `443` | 测速端口（0 拒绝） |
 | `ping_mode` | String? | `null`(=tcp) | `tcp` / `http` / `icmp`（`icmp` 需编译 `icmp` feature 且环境具备权限） |
@@ -166,7 +166,7 @@ snake_case；全部字段可缺省，缺省值与上游 CLI 默认一致。
   "count": 2,
   "items": [
     {
-      "ip": "1.0.0.59", "port": 443,
+      "ip": "1.0.0.59", "port": 443, "origin": null,
       "sent": 4, "received": 4, "loss_rate": 0.0,
       "delay_ms": 4.36,
       "download_speed_mbps": 2.92,
@@ -176,8 +176,18 @@ snake_case；全部字段可缺省，缺省值与上游 CLI 默认一致。
 }
 ```
 
-- `items` 已按综合评分排序（靠前者优先）；`download_speed_mbps` / `colo` 可为 `null`；
+- `items` 已按综合评分排序（靠前者优先）；`download_speed_mbps` / `colo` / `origin` 可为 `null`；
+- `origin` 仅域名条目解析展开时携带（原始输入主机名，如 `"vip.example.com"`）；
 - stop / 全局超时触发的提前结束同样返回**已完成的部分结果**。
+
+### 非标优选（域名条目）
+
+`ip_text` / `ip_file` 支持混入 `域名` 或 `域名:端口` 条目（缺省端口回退 `tcp_port`）：
+
+- 解析发生在 `start` 之后的引擎线程（`create` 阶段不发起 DNS，离线可创建）；
+- 每域名解析超时 5s，展开为多个测试目标（IPv4 优先，单域名上限 50 条记录，与 CFData-WEB 非标模式一致）；
+- 解析失败的域名警告跳过；若全部无效则 `phase=error`（「没有可测试的目标」）；
+- 结果行的 `ip` 为解析后的实际地址，`origin` 保留原始输入；下载测速 SNI/Host 仍取 `url` 的主机名，与 IP 优选行为一致。
 
 ---
 
