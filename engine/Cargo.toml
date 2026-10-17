@@ -41,8 +41,9 @@ mimalloc = { version = "0.1", optional = true, default-features = false }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Console"], default-features = false }
 
-# --- Linux ---
-[target.'cfg(target_os = "linux")'.dependencies]
+# --- Linux / Android ---
+# 注意：Android 目标的 target_os 是 "android"，target 依赖也必须单独覆盖
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 libc = { version = "0.2", default-features = false }
 
 # --- macOS ---

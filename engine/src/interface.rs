@@ -1,6 +1,8 @@
 use std::net::{IpAddr, SocketAddr};
 use tokio::net::TcpSocket;
 
+// AsRawFd 仅被 IP_BIND_ADDRESS_NO_PORT（桌面 Linux）与 macOS 绑定使用；
+// Android 不走这两个路径，保持原 cfg 避免未使用导入
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::AsRawFd;
 
@@ -35,7 +37,9 @@ pub(crate) struct InterfaceIps {
 pub(crate) struct InterfaceParamResult {
     pub(crate) interface_ips: Option<InterfaceIps>,
     pub(crate) is_valid_interface: bool,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    // 注意：Android 目标的 target_os 是 "android" 而非 "linux"，
+    // unix 系分支必须显式包含 android，否则在交叉编译时被全部剔除
+    #[cfg(unix)]
     pub(crate) name: Option<String>,
     #[cfg(target_os = "windows")]
     pub(crate) interface_index: Option<u32>,
@@ -59,7 +63,7 @@ fn is_valid_interface_name(name: &str) -> bool {
     #[cfg(target_os = "windows")]
     { get_interface_index(name).is_some() }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(unix)]
     {
         std::ffi::CString::new(name)
             .map_or(false, |c| {
@@ -96,7 +100,7 @@ pub(crate) fn process_interface_param(interface: &str) -> InterfaceParamResult {
             InterfaceParamResult { 
                 interface_ips: None, 
                 is_valid_interface: is_valid,
-                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                #[cfg(unix)]
                 name: Some(name),
                 #[cfg(target_os = "windows")]
                 interface_index,
@@ -138,7 +142,8 @@ fn create_tcp_socket_for_ip(addr: &IpAddr) -> TcpSocket {
     }
 }
 
-#[cfg(target_os = "linux")]
+// SO_BINDTODEVICE：Linux/Android 可用（Android 上需要 root，普通 App 只能用源 IP 绑定）
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn bind_to_interface(sock: &TcpSocket, name: &str) -> Option<()> {
     sock.bind_device(Some(name.as_bytes())).ok()
 }
@@ -266,7 +271,7 @@ pub(crate) async fn bind_socket_to_interface(
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     if let Some(ref name) = interface_config.name {
         bind_to_interface(&sock, name)?;
     }
