@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支新推送自动取消未完成的旧任务，节省构建资源
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: Rust 引擎（单测 + Android 交叉编译冒烟）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # ubuntu-latest 预装最新 NDK，ANDROID_NDK_LATEST_HOME 指向其根目录
+      ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Rust stable（含 Android 目标）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Rust 编译缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+
+      # 离线单元测试：配置解析/校验/钳制等纯逻辑回归网
+      - name: 引擎单元测试（离线）
+        run: |
+          cd engine
+          cargo check --locked
+          cargo test --locked
+
+      # 交叉编译冒烟：尽早暴露 aarch64/armv7 特有的编译破坏
+      # （debug 构建即可，重点在编译通过而非运行）
+      - name: 安装 cargo-ndk
+        uses: taiki-e/install-action@cargo-ndk
+
+      - name: Android 交叉编译冒烟（debug，多 ABI）
+        run: |
+          cd engine
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 24 build
+
+      - name: 校验 16KB 页对齐（Android 15+ 加载要求）
+        run: |
+          cd engine
+          READER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          [ -x "$READER" ] || READER=readelf
+          for so in target/*/debug/libcfst.so; do
+            echo "== $so"
+            # LOAD 段 Align 列应 >= 0x4000 (16384)
+            "$READER" -l "$so" | grep LOAD | awk '{print "  Align:", $NF}'
+            "$READER" -l "$so" | grep LOAD | awk '{if ($NF+0 < 16384) exit 1}' \
+              || { echo "::error::$so 未按 16KB 对齐"; exit 1; }
+          done
+
+  # App 工程落地后自动启用（当前仓库尚无 app/，此 job 自动跳过）
+  app:
+    name: Android App（存在时）
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: hashFiles('app/build.gradle.kts') != ''
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Rust stable + cargo-ndk
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - uses: taiki-e/install-action@cargo-ndk
+
+      - name: 构建引擎 .so（release，含 16KB 对齐）
+        run: |
+          chmod +x engine/build-so.sh
+          ./engine/build-so.sh
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 依赖缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Kotlin 单元测试
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: 构建 Debug APK（验证集成）
+        run: ./gradlew :app:assembleDebug --no-daemon
