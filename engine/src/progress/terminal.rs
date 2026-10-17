@@ -335,7 +335,7 @@ fn get_terminal_width() -> usize {
     80
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(unix)]
 fn get_terminal_width() -> usize {
     use libc::{ioctl, winsize, TIOCGWINSZ, STDOUT_FILENO};
     unsafe {
