@@ -18,6 +18,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -30,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,11 +42,9 @@ import com.masgzy.cfstmobile.ui.components.StatusCard
 import com.masgzy.cfstmobile.ui.dialogs.ExportDialog
 import com.masgzy.cfstmobile.ui.dialogs.HistoryDialog
 import com.masgzy.cfstmobile.ui.dialogs.SettingsDialog
-import com.masgzy.cfstmobile.ui.theme.CfBlue
-import com.masgzy.cfstmobile.ui.theme.WarnOrange
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
-/** 应用根：蓝色顶栏（历史/设置）+ 状态卡 + 控制按钮 + 结果区 + 各对话框 */
+/** 应用根：顶栏（历史/设置）+ 状态卡 + 控制按钮 + 结果区 + 各对话框 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(viewModel: TestViewModel) {
@@ -70,10 +68,11 @@ fun AppRoot(viewModel: TestViewModel) {
                 title = {
                     Text(text = "Cloudflare 优选测速", fontWeight = FontWeight.Bold)
                 },
+                // 跟随 Material You 动态取色（关闭动态取色时为品牌蓝）
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = CfBlue,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary,
                 ),
                 actions = {
                     IconButton(onClick = { showHistory = true }) {
@@ -134,7 +133,7 @@ fun AppRoot(viewModel: TestViewModel) {
 private fun MockBanner() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -143,14 +142,14 @@ private fun MockBanner() {
             Icon(
                 imageVector = Icons.Filled.Info,
                 contentDescription = null,
-                tint = WarnOrange,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.size(8.dp))
             Text(
                 text = "演示模式：未检测到 libcfst.so，当前展示为模拟数据",
                 fontSize = 12.sp,
-                color = Color(0xFFB26A00),
+                color = MaterialTheme.colorScheme.onErrorContainer,
             )
         }
     }

@@ -52,6 +52,8 @@ data class UiSettings(
     val mirrorUrl: String = "",
     /** 结果排序：score / delay / speed */
     val sortBy: String = SortMode.SCORE,
+    /** Material You 动态取色（Android 12+ 跟随壁纸；关闭则用 Cloudflare 蓝品牌色） */
+    val dynamicColors: Boolean = true,
 ) {
     /** 组装引擎配置载荷（未填字段交给引擎默认值/校验） */
     fun toCfstConfig(): CfstConfig = CfstConfig(
