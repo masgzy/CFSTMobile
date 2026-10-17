@@ -1,0 +1,415 @@
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+use crate::log::warning_println;
+#[cfg(feature = "cli")]
+use crate::log::error_and_exit;
+use crate::interface::InterfaceParamResult;
+#[cfg(feature = "cli")]
+use crate::interface::process_interface_param;
+
+#[cfg(target_os = "windows")]
+use std::sync::OnceLock;
+#[cfg(target_os = "windows")]
+pub(crate) static OUTPUT_HANDLE: OnceLock<std::fs::File> = OnceLock::new();
+
+const NON_TLS_PORTS: [u16; 7] = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+const TLS_PORTS: [u16; 6] = [443, 2053, 2083, 2087, 2096, 8443];
+
+#[derive(Clone, Debug)]
+pub(crate) struct Args {
+    // 网络测试参数
+    #[cfg(feature = "icmp")]
+    pub(crate) icmp_ping: bool,                    // 是否使用ICMP Ping测速
+    pub(crate) ping_times: u16,                    // Ping测试次数
+    pub(crate) tcp_port: u16,                      // 端口号
+    pub(crate) url: String,                        // 测速URL
+    pub(crate) httping: Option<String>,            // HTTPing
+    pub(crate) httping_code: String,               // HTTPing要求的HTTP状态码
+    pub(crate) httping_cf_colo: String,            // 指定数据中心
+    pub(crate) max_delay: Duration,                // 最大可接受延迟
+    pub(crate) min_delay: Duration,                // 最小可接受延迟
+    pub(crate) max_loss_rate: f32,                 // 最大丢包率阈值
+    pub(crate) test_count: usize,                  // 所需达到下载速度下限的IP数量
+    pub(crate) timeout_duration: Option<Duration>, // 单次下载测速的持续时间
+    pub(crate) min_speed_bps: f32,                 // 最低下载速度要求(B/s)，解析时由 MB/s 转换
+    pub(crate) disable_download: bool,             // 是否禁用下载测试
+
+    // 结果处理参数
+    pub(crate) target_num: Option<usize>, // Ping所需可用IP数量
+    pub(crate) print_num: u16,            // 显示结果数量
+    pub(crate) ip_file: String,           // IP列表文件路径
+    pub(crate) ip_text: String,           // 直接指定的IP
+    pub(crate) output: Option<String>,    // 结果输出文件
+
+    // 功能开关
+    pub(crate) test_all_ipv4: bool,  // 测试所有IPv4
+    #[cfg(feature = "cli")]
+    #[allow(dead_code)]              // lib+cli 组合下仅 parse/parse_args 内部使用
+    pub(crate) help: bool,           // 打印帮助信息（仅 CLI）
+    pub(crate) show_port: bool,      // 在结果中显示端口
+
+    // 高级设置
+    pub(crate) global_timeout_duration: Option<Duration>, // 全局超时设置
+    pub(crate) max_threads: usize,                        // 最大线程数
+    pub(crate) interface_config: Arc<InterfaceParamResult>,  // 接口配置
+}
+
+impl Args {
+    pub(crate) fn new() -> Self {
+        Self {
+            #[cfg(feature = "icmp")]
+            icmp_ping: false,
+            ping_times: 4,
+            tcp_port: 443,
+            url: String::new(),
+            httping: None,
+            httping_code: String::new(),
+            httping_cf_colo: String::new(),
+            max_delay: Duration::from_millis(2000),
+            min_delay: Duration::from_millis(0),
+            max_loss_rate: 1.0,
+            test_count: 10,
+            timeout_duration: Some(Duration::from_secs(10)),
+            min_speed_bps: 0.0,
+            disable_download: false,
+            target_num: None,
+            print_num: 10,
+            ip_file: String::new(),
+            ip_text: String::new(),
+            // 库模式默认不写文件（Android 无沙箱外写权限），CLI 在 parse_args 里默认 result.csv
+            output: None,
+            test_all_ipv4: false,
+            #[cfg(feature = "cli")]
+            help: false,
+            show_port: false,
+            global_timeout_duration: None,
+            max_threads: 256,
+            interface_config: Arc::new(InterfaceParamResult::default()),
+        }
+    }
+
+    /// 共享校验：CLI parse_args 与库引擎配置共用。
+    /// 端口/协议不匹配只算警告（沿用上游行为），其余为硬错误。
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if !self.ip_file.is_empty() && !Path::new(&self.ip_file).exists() {
+            return Err("指定的 IP 文件不存在".to_string());
+        }
+
+        if self.ip_file.is_empty() && self.ip_text.is_empty() {
+            return Err("必须指定 IP 来源（ip_text / ip_file）".to_string());
+        }
+
+        if !self.disable_download && self.url.is_empty() {
+            return Err("必须设置下载测速 url，或设 disable_download = true".to_string());
+        }
+
+        if self.tcp_port == 0 {
+            return Err("tcp_port 不能为 0".to_string());
+        }
+
+        let mut active_checks: Vec<(&str, &str)> = Vec::new();
+        if let Some(ref url) = self.httping {
+            active_checks.push((url.as_str(), "延迟测速"));
+        }
+        if !self.disable_download && !self.url.is_empty() {
+            active_checks.push((self.url.as_str(), "下载测速"));
+        }
+
+        let mut is_mismatch = false;
+
+        for (url, scene) in active_checks {
+            let is_https = url.starts_with("https:");
+            let is_http = url.starts_with("http:");
+
+            if !is_http && !is_https {
+                return Err(format!("{scene}使用的 URL 必须以协议前缀开头: {url}"));
+            }
+
+            if crate::hyper::parse_url_to_uri(url).is_none() {
+                return Err(format!("{scene}使用的 URL '{url}' 无效：缺少 host"));
+            }
+
+            if (is_https && NON_TLS_PORTS.contains(&self.tcp_port)) ||
+               (is_http && TLS_PORTS.contains(&self.tcp_port)) {
+                is_mismatch = true;
+            }
+        }
+
+        if is_mismatch {
+            warning_println(format_args!("端口与协议可能不匹配！"));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "cli")]
+    #[allow(dead_code)] // lib+cli 组合下无人调用，属预期
+    fn parse_or_exit<T: std::str::FromStr>(s: &str, arg_name: &str) -> T {
+        s.parse().unwrap_or_else(|_|
+            error_and_exit(format_args!("参数 -{arg_name} 的值 '{s}' 无效"))
+        )
+    }
+
+    #[cfg(feature = "cli")]
+    #[allow(dead_code)]
+    fn parse_or<T: std::str::FromStr>(value_opt: Option<String>, default: T, arg_name: &str) -> T {
+        value_opt.map_or(default, |s| Self::parse_or_exit(&s, arg_name))
+    }
+
+    #[cfg(feature = "cli")]
+    #[allow(dead_code)]
+    fn assign_string(target: &mut String, value_opt: Option<String>) {
+        if let Some(v) = value_opt {
+            *target = v;
+        }
+    }
+
+    #[cfg(feature = "cli")]
+    #[allow(dead_code)]
+    pub(crate) fn parse() -> Self {
+        let args: Vec<String> = std::env::args().collect();
+        let mut parsed = Self::new();
+        // CLI 默认输出 result.csv（库模式保持 None）
+        parsed.output = Some("result.csv".to_string());
+        let vec = Self::parse_args_to_vec(&args);
+
+        let mut use_tp = false;
+
+        for (k, v_opt) in vec {
+            match k.as_str() {
+                "h" | "help" => parsed.help = true,
+                "httping" => if let Some(v) = v_opt { parsed.httping = Some(v); } else { parsed.httping = Some("http://cp.cloudflare.com/cdn-cgi/trace".to_string()); },
+                "dd" => parsed.disable_download = true,
+                "all4" => parsed.test_all_ipv4 = true,
+                "sp" => parsed.show_port = true,
+                #[cfg(feature = "icmp")]
+                "ping" => parsed.icmp_ping = true,
+
+                "t" => {
+                    parsed.ping_times = Self::parse_or(v_opt, parsed.ping_times, &k).clamp(1, u16::MAX);
+                }
+                "dn" => {
+                    parsed.test_count = Self::parse_or(v_opt, parsed.test_count, &k).clamp(1, usize::MAX);
+                }
+                "tp" => {
+                    use_tp = true;
+                    parsed.tcp_port = Self::parse_or(v_opt, parsed.tcp_port, &k).clamp(1, u16::MAX);
+                }
+                "p" => {
+                    parsed.print_num = Self::parse_or(v_opt, parsed.print_num, &k).clamp(1, u16::MAX);
+                }
+                "tlr" => {
+                    parsed.max_loss_rate = Self::parse_or(v_opt, parsed.max_loss_rate, &k).clamp(0.0, 1.0);
+                }
+                "sl" => {
+                    let mbps = Self::parse_or(v_opt, parsed.min_speed_bps / crate::common::BYTES_PER_MB, &k).clamp(0.0, f32::MAX);
+                    parsed.min_speed_bps = mbps * crate::common::BYTES_PER_MB;
+                }
+                "tn" => {
+                    parsed.target_num = v_opt.map(|s| Self::parse_or_exit(&s, &k));
+                }
+                "n" => {
+                    parsed.max_threads = Self::parse_or(v_opt, parsed.max_threads, &k).clamp(1, 1024);
+                }
+                "dt" => {
+                    let seconds = Self::parse_or(v_opt, parsed.timeout_duration.map(|d| d.as_secs()).unwrap(), &k);
+                    parsed.timeout_duration = Some(Duration::from_secs(seconds.clamp(1, 120)));
+                }
+                "timeout" => {
+                    parsed.global_timeout_duration = v_opt.map(|v| {
+                        let s: u64 = Self::parse_or_exit(&v, &k);
+                        Duration::from_secs(s.clamp(1, 36000))
+                    });
+                }
+                "tl" => {
+                    let ms = Self::parse_or::<u64>(v_opt, parsed.max_delay.as_millis().try_into().unwrap(), &k);
+                    parsed.max_delay = Duration::from_millis(ms.clamp(0, 2000));
+                }
+                "tll" => {
+                    let max_allowed = parsed.max_delay.as_millis().try_into().unwrap();
+                    parsed.min_delay = Duration::from_millis(Self::parse_or::<u64>(v_opt, parsed.min_delay.as_millis().try_into().unwrap(), &k).clamp(0, max_allowed));
+                }
+                "url" => Self::assign_string(&mut parsed.url, v_opt),
+                "hc" => Self::assign_string(&mut parsed.httping_code, v_opt),
+                "colo" => Self::assign_string(&mut parsed.httping_cf_colo, v_opt),
+                "f" => Self::assign_string(&mut parsed.ip_file, v_opt),
+                "ip" => Self::assign_string(&mut parsed.ip_text, v_opt),
+                "o" => parsed.output = v_opt,
+                "intf" => {
+                    if let Some(ref interface) = v_opt {
+                        parsed.interface_config = Arc::new(process_interface_param(interface));
+
+                        if !parsed.interface_config.is_valid_interface {
+                            error_and_exit(format_args!("无效的绑定: {interface}"));
+                        }
+                    }
+                }
+
+                _ => {
+                    print_help();
+                    error_and_exit(format_args!("无效的参数: {k}"));
+                }
+            }
+        }
+
+        // 若启用 httping 且未使用 -tp，则根据HTTPing URL设置默认端口
+        if !use_tp && parsed.httping.as_ref().is_some_and(|h| h.starts_with("http:")) {parsed.tcp_port = NON_TLS_PORTS[0]}
+
+        parsed
+    }
+
+    #[cfg(feature = "cli")]
+    #[allow(dead_code)]
+    fn parse_args_to_vec(args: &[String]) -> Vec<(String, Option<String>)> {
+        let mut iter = args.iter().skip(1).peekable();
+        let mut result = Vec::new();
+
+        while let Some(arg) = iter.next() {
+            if arg.starts_with('-') {
+                let key = arg.trim_start_matches('-').to_string();
+                let value = iter.peek()
+                    .filter(|next| !next.starts_with('-'))
+                    .map(|next| next.to_string());
+
+                if value.is_some() { iter.next(); }
+
+                result.push((key, value));
+            }
+        }
+
+        result
+    }
+}
+
+#[cfg(feature = "cli")]
+#[allow(dead_code)]
+pub(crate) fn parse_args() -> Args {
+    let args = Args::parse();
+
+    if args.help {
+        print_help();
+        std::process::exit(0);
+    }
+
+    if let Err(e) = args.validate() {
+        error_and_exit(format_args!("{e}"));
+    }
+
+    // Windows: 提前打开输出文件并保持句柄
+    #[cfg(target_os = "windows")]
+    if let Some(path) = &args.output {
+        let file = std::fs::OpenOptions::new().write(true).create(true).truncate(false).open(path)
+            .unwrap_or_else(|e| error_and_exit(format_args!("无法写入到输出文件 '{path}': {e}")));
+
+        OUTPUT_HANDLE.set(file).ok();
+    }
+
+    args
+}
+
+#[cfg(feature = "cli")]
+#[allow(dead_code)]
+fn approximate_display_width_no_color(s: &str) -> usize {
+    let mut width = 0;
+    let mut in_escape = false;
+
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+            continue;
+        } else if in_escape {
+            if c == 'm' || c.is_alphabetic() {
+                in_escape = false;
+            }
+            continue;
+        }
+        // 非 ASCII (中文) 宽度为 2，ASCII 宽度为 1
+        width += if c.is_ascii() { 1 } else { 2 };
+    }
+    width
+}
+
+#[cfg(feature = "cli")]
+#[allow(dead_code)]
+fn format_help_line(name: &str, desc: &str, default: &str) -> String {
+    let name_colored = format!("\x1b[32m{}\x1b[0m", name);
+    let name_display_width = approximate_display_width_no_color(&name_colored);
+    let name_padding = " ".repeat(11usize.saturating_sub(name_display_width));
+
+    let desc_display_width = approximate_display_width_no_color(desc);
+    let desc_padding = " ".repeat(45usize.saturating_sub(desc_display_width));
+
+    let default_colored = format!("\x1b[2m{}\x1b[0m", default);
+    let default_display_width = approximate_display_width_no_color(&default_colored);
+    let default_padding = " ".repeat(15usize.saturating_sub(default_display_width));
+
+    format!(
+        " {}{}{}{}{}{}\n",
+        name_colored,
+        name_padding,
+        desc,
+        desc_padding,
+        default_colored,
+        default_padding
+    )
+}
+
+#[cfg(feature = "cli")]
+#[allow(dead_code)]
+pub(crate) fn print_help() {
+    const HELP_ARGS: &[(&str, &str, &str)] = &[
+        // 目标参数
+        ("", "目标参数", ""), // 标记标题
+        ("-f", "从指定文件名或文件路径获取 IP 或 CIDR", "未指定"),
+        ("-ip", "直接指定 IP 或 CIDR（多个用逗号分隔）", "未指定"),
+        ("-url", "TLS 模式的 Httping 或下载测速所使用的 URL", "未指定"),
+        ("-tp", "测速端口", "80 / 443"),
+
+        // 测试参数
+        ("", "测试参数", ""), // 标记标题
+        ("-t", "延迟测速次数", "4"),
+        ("-dt", "下载测速时间（秒）", "10"),
+        ("-dn", "下载测速所需符合要求的结果数量", "10"),
+        ("-n", "延迟测速的线程数量", "256"),
+        ("-tn", "当 Ping 到指定可用数量，提前结束 Ping", "否"),
+        ("-intf", "绑定到指定接口名或 IP", "未指定"),
+
+        // 控制参数
+        ("", "控制参数", ""), // 标记标题
+        ("-httping", "使用 HTTPing 测速并指定其地址", "http://cp.cloudflare.com/cdn-cgi/trace"),
+        #[cfg(feature = "icmp")]
+        ("-ping", "使用 ICMP Ping 进行延迟测速", "否"),
+        ("-dd", "禁用下载测速", "否"),
+        ("-all4", "测速全部 IPv4 地址", "否"),
+        ("-timeout", "程序超时退出时间（秒）", "不限制"),
+
+        // 过滤参数
+        ("", "过滤参数", ""), // 标记标题
+        ("-tl", "延迟上限（毫秒）", "2000"),
+        ("-tll", "延迟下限（毫秒）", "0"),
+        ("-tlr", "丢包率上限", "1.00"),
+        ("-sl", "下载速度下限（MB/s）", "0.00"),
+        ("-hc", "指定 HTTPing 的状态码（例如：200,301,302）", "未指定"),
+        ("-colo", "指定地区（例如：HKG,SJC）", "未指定"),
+
+        // 结果参数
+        ("", "结果参数", ""), // 标记标题
+        ("-p", "终端显示结果数量", "10"),
+        ("-sp", "结果中带端口号", "否"),
+        ("-o", "输出结果文件（文件名或文件路径）", "result.csv"),
+    ];
+
+    let mut help_text = String::new();
+
+    for (name, desc, default) in HELP_ARGS.iter() {
+        if name.is_empty() {
+            help_text.push('\n');
+            help_text.push_str(&format!("\x1b[1;35m{}\x1b[0m\n", desc));
+        } else {
+            help_text.push_str(&format_help_line(name, desc, default));
+        }
+    }
+
+    print!("{}", help_text);
+}

@@ -1,0 +1,60 @@
+[package]
+name = "cfst-engine"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0"
+description = "CFSTMobile Android 端 Cloudflare 优选测速引擎（C ABI FFI 库，改造自 GuangYu-yu/CloudflareST-Rust）"
+publish = false
+
+[lib]
+name = "cfst"
+crate-type = ["cdylib", "rlib"]
+
+# 桌面 CLI（需 --features cli 才参与构建；Android 端只构建 cdylib）
+[[bin]]
+name = "cfst"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = []
+# 桌面命令行入口（含终端进度条与 mimalloc 全局分配器）
+cli = ["dep:mimalloc"]
+# ICMP 延迟测速（需要原始套接字权限：桌面 root/admin；Android 上普通 App 不可用）
+icmp = ["dep:surge-ping"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "net"], default-features = false }
+hyper = { version = "1", features = ["client", "http1"], default-features = false }
+rustls-pki-types = { version = "1", default-features = false }
+http = { version = "1", default-features = false }
+http-body = { version = "1", default-features = false }
+hyper-util = { version = "0.1", features = ["tokio"], default-features = false }
+surge-ping = { version = "0.9", optional = true, default-features = false }
+tokio-rustls = { version = "0.26", default-features = false }
+rustls = { version = "0.23", features = ["ring"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mimalloc = { version = "0.1", optional = true, default-features = false }
+
+# --- Windows ---
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Console"], default-features = false }
+
+# --- Linux ---
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", default-features = false }
+
+# --- macOS ---
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { version = "0.2", default-features = false }
+
+[profile.release]
+opt-level = "s"         # 体积优先（Android .so）
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+debug = 0
+incremental = false
+# 注意：不能设 panic = "abort"——FFI 边界依赖 catch_unwind 拦截 panic，
+# abort 会让任何内部 panic 直接杀死宿主进程（Android 上即 App 崩溃）。

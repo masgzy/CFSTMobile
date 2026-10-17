@@ -1,0 +1,21 @@
+# Rust
+engine/target/
+
+# Android / Gradle
+*.apk
+*.aab
+.gradle/
+build/
+app/build/
+local.properties
+
+# 签名材料（Secrets 注入，绝不入库）
+signing/
+keystore.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.DS_Store
