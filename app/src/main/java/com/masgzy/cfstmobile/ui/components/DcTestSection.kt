@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.DcSortKey
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestItem
@@ -37,9 +38,11 @@ import com.masgzy.cfstmobile.viewmodel.TestViewModel
 /**
  * 详细测试结果区（对齐 CFData-WEB #test tab 官方结构）：
  * 标题「详细测试结果」+ 徽章 + 合格筛选下拉 + 动作按钮组
- * （🚀 一键测速 / ⏭️ 继续测速 / ↕️ 一键排序 / 📋 一键复制 / 📥 结果操作）+
+ * （一键测速/继续测速/一键排序/一键复制/结果操作，Material Symbols 图标）+
  * 12 列宽表：IP 地址/端口/数据中心/落地区域/地区/城市/扫描方式/丢包率/
  * 最小延迟/最大延迟/平均延迟/测速。
+ * 点选 DC 后一条龙：延迟精测（tcping×10/httping×3，min/avg/max/丢包）→
+ * 自动对通过 IP 做下载测速回填「测速」列。
  */
 
 /** 合格筛选（对齐 officialTestQualifiedFilter） */
@@ -82,8 +85,8 @@ private fun DcIdle(hasResults: Boolean, onStart: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "对本次测速结果按数据中心聚合，点选 DC 后对其全部 IP 做二次详细测试" +
-                "（tcping×10 / httping×3，统计 min/avg/max/丢包）",
+            text = "对本次测速结果按数据中心聚合，点选 DC 后对其全部 IP 做二次详细测试\n" +
+                "（tcping×10 / httping×3 统计 min/avg/max/丢包，随后自动下载测速）",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -93,6 +96,7 @@ private fun DcIdle(hasResults: Boolean, onStart: () -> Unit) {
             text = "开始探测数据中心",
             onClick = onStart,
             enabled = hasResults,
+            icon = R.drawable.ic_sym_travel_explore,
             modifier = Modifier.padding(horizontal = 32.dp),
         )
         if (!hasResults) {
@@ -215,7 +219,7 @@ private fun DcResults(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = "批量测速中 ${state.speedBatchDone}/${state.speedBatchTotal}",
+                text = "下载测速中 ${state.speedBatchDone}/${state.speedBatchTotal}（自动阶段）",
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -239,52 +243,64 @@ private fun DcResults(
         )
         Spacer(Modifier.height(8.dp))
 
-        // ---------------- 动作按钮组（对齐 .table-actions 五钮） ----------------
+        // ---------------- 动作按钮组（对齐 .table-actions 五钮；双列网格 + Material Symbols 图标） ----------------
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            GreenButton(
-                text = if (state.speedBatchRunning) "测速中..." else "🚀 一键测速",
-                enabled = !state.speedBatchRunning && visible.isNotEmpty(),
-                onClick = { viewModel.batchSpeedTest(continued = false) },
-            )
-            GreenButton(
-                text = "⏭️ 继续测速",
-                enabled = !state.speedBatchRunning && visible.any { it.speedMbps == null },
-                onClick = { viewModel.batchSpeedTest(continued = true) },
-            )
-            Box {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GreenButton(
-                    text = "↕️ 一键排序",
-                    enabled = visible.isNotEmpty(),
-                    onClick = { showSortMenu = true },
+                    text = if (state.speedBatchRunning) "测速中..." else "一键测速",
+                    icon = R.drawable.ic_sym_rocket_launch,
+                    enabled = !state.speedBatchRunning && visible.isNotEmpty(),
+                    onClick = { viewModel.batchSpeedTest(continued = false) },
+                    modifier = Modifier.weight(1f),
                 )
-                DropdownMenu(
-                    expanded = showSortMenu,
-                    onDismissRequest = { showSortMenu = false },
-                ) {
-                    listOf(
-                        "丢包率" to DcSortKey.LOSS,
-                        "最低延迟" to DcSortKey.MIN,
-                        "平均延迟" to DcSortKey.AVG,
-                        "最大延迟" to DcSortKey.MAX,
-                        "下载速度" to DcSortKey.SPEED,
-                    ).forEach { (label, key) ->
-                        DropdownMenuItem(
-                            text = { Text(label) },
-                            onClick = {
-                                viewModel.sortDcResults(key)
-                                showSortMenu = false
-                            },
-                        )
+                GreenButton(
+                    text = "继续测速",
+                    icon = R.drawable.ic_sym_skip_next,
+                    enabled = !state.speedBatchRunning && visible.any { it.speedMbps == null },
+                    onClick = { viewModel.batchSpeedTest(continued = true) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    GreenButton(
+                        text = "一键排序",
+                        icon = R.drawable.ic_sym_swap_vert,
+                        enabled = visible.isNotEmpty(),
+                        onClick = { showSortMenu = true },
+                    )
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                    ) {
+                        listOf(
+                            "丢包率" to DcSortKey.LOSS,
+                            "最低延迟" to DcSortKey.MIN,
+                            "平均延迟" to DcSortKey.AVG,
+                            "最大延迟" to DcSortKey.MAX,
+                            "下载速度" to DcSortKey.SPEED,
+                        ).forEach { (label, key) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    viewModel.sortDcResults(key)
+                                    showSortMenu = false
+                                },
+                            )
+                        }
                     }
                 }
+                GreenButton(
+                    text = "一键复制",
+                    icon = R.drawable.ic_sym_content_copy,
+                    enabled = visible.isNotEmpty(),
+                    onClick = { onCopy(visible.joinToString("\n") { it.address() }) },
+                    modifier = Modifier.weight(1f),
+                )
             }
             GreenButton(
-                text = "📋 一键复制",
-                enabled = visible.isNotEmpty(),
-                onClick = { onCopy(visible.joinToString("\n") { it.address() }) },
-            )
-            GreenButton(
-                text = "📥 结果操作",
+                text = "结果操作",
+                icon = R.drawable.ic_sym_download,
                 enabled = visible.isNotEmpty(),
                 onClick = onExportClick,
             )

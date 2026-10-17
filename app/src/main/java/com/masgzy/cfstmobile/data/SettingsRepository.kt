@@ -17,6 +17,7 @@ class SettingsRepository(context: Context) {
             ?.let { raw ->
                 runCatching { json.decodeFromString(UiSettings.serializer(), raw) }
                     .getOrNull()
+                    ?.sanitized()
             }
             ?: UiSettings()
 

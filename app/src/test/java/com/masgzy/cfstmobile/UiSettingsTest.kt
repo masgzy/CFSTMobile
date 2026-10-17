@@ -239,3 +239,39 @@ class UiSettingsTest {
         )
     }
 }
+
+    // ---------------------------------------------------------------- sanitized（非标手动列表官方段清洗）
+
+    @Test
+    fun `sanitized clears manual list that is purely built-in segments`() {
+        val dirty = BUILT_IN_IPS.take(6).joinToString("\n")
+        val cleaned = UiSettings(ipSource = UiSettings.SOURCE_CUSTOM, customIpText = dirty).sanitized()
+        assertEquals("", cleaned.customIpText)
+    }
+
+    @Test
+    fun `sanitized keeps user entries mixed with segments`() {
+        val mixed = BUILT_IN_IPS.first() + "\n1.2.3.4:8443\nexample.com:2053"
+        val kept = UiSettings(ipSource = UiSettings.SOURCE_CUSTOM, customIpText = mixed).sanitized()
+        assertEquals(mixed, kept.customIpText)
+    }
+
+    @Test
+    fun `sanitized keeps pure user entries`() {
+        val user = "1.2.3.4:8443\n5.6.7.8"
+        val kept = UiSettings(customIpText = user).sanitized()
+        assertEquals(user, kept.customIpText)
+    }
+
+    @Test
+    fun `sanitized ignores blank and comment lines`() {
+        val dirty = "# comment\n\n" + BUILT_IN_IPS.take(3).joinToString("\n")
+        val cleaned = UiSettings(customIpText = dirty).sanitized()
+        assertEquals("", cleaned.customIpText)
+    }
+
+    @Test
+    fun `sanitized empty input is no-op`() {
+        val s = UiSettings()
+        assertEquals(s, s.sanitized())
+    }

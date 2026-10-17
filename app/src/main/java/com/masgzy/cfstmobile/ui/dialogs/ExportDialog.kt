@@ -16,11 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,12 +46,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.EdgetunnelClient
 import com.masgzy.cfstmobile.data.EdgetunnelStore
 import com.masgzy.cfstmobile.data.EtAccount
@@ -289,7 +286,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
             // ---------------- edgetunnel 上传 ----------------
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Filled.CloudUpload,
+                    painter = painterResource(R.drawable.ic_sym_upload),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
@@ -313,7 +310,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                             textAlign = androidx.compose.ui.text.style.TextAlign.Start,
                             maxLines = 1,
                         )
-                        Icon(Icons.Filled.ArrowDropDown, contentDescription = "选择账户")
+                        Icon(painter = painterResource(R.drawable.ic_sym_arrow_drop_down), contentDescription = "选择账户")
                     }
                     DropdownMenu(expanded = accountMenu, onDismissRequest = { accountMenu = false }) {
                         if (accounts.isEmpty()) {
@@ -350,7 +347,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     enabled = selectedName.isNotBlank(),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Delete,
+                        painter = painterResource(R.drawable.ic_sym_delete),
                         contentDescription = "删除账户",
                         tint = MaterialTheme.colorScheme.error,
                     )
@@ -597,7 +594,7 @@ private fun GithubSection(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = Icons.Filled.CloudSync,
+                painter = painterResource(R.drawable.ic_sym_sync),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),

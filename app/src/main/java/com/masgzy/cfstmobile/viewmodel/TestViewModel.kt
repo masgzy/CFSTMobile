@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -691,7 +692,13 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             } else {
-                log("二次详细测试完成：${out.size} 个 IP 通过")
+                log("延迟精测完成：${out.size} 个 IP 通过")
+                // 一条龙详细测试：延迟精测通过后自动进入下载测速阶段，
+                // 回填「测速」列（对齐 CFData TestResult.Speed；未开测速则跳过该阶段）
+                if (_settings.value.downloadEnabled) {
+                    log("自动进入下载测速阶段（${out.size} 个 IP · 并发 ${_settings.value.speedThreads}）")
+                    execSpeedBatch(out, "自动下载测速")
+                }
                 _dcState.update {
                     it.copy(
                         step = DcStep.DONE,
@@ -703,12 +710,11 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ------------------------------------------------------ 批量测速（一键测速/继续测速）
+    // ------------------------------------------------------ 批量测速（一键测速/继续测速/自动阶段）
 
     /**
-     * 对详细测试结果批量下载测速（对齐 CFData startOfficialBatchSpeed）：
+     * 手动批量下载测速（对齐 CFData startOfficialBatchSpeed）：
      * [continued]=true 时跳过已有测速结果的 IP（继续测速）。
-     * 引擎以「快速 ping + 下载测速」会话实现：ping_times=1、延迟上限放宽，仅取下载速度。
      */
     fun batchSpeedTest(continued: Boolean) {
         if (_dcState.value.speedBatchRunning) return
@@ -729,72 +735,83 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         }
         dcJob?.cancel()
         dcJob = viewModelScope.launch(Dispatchers.IO) {
-            _dcState.update {
-                it.copy(speedBatchRunning = true, speedBatchDone = 0, speedBatchTotal = targets.size)
+            execSpeedBatch(targets, if (continued) "继续测速" else "一键测速")
+        }
+    }
+
+    /**
+     * 引擎批量下载测速（在调用方协程内顺序执行，可被 dcJob 取消）：
+     * 「快速 ping + 下载测速」会话实现：ping_times=1、延迟上限放宽，仅取下载速度；
+     * 完成后把速度按 ip:port 回填到详细测试结果并按当前排序键重排。
+     * [label] 用于日志区分（一键测速/继续测速/自动下载测速）。
+     */
+    private suspend fun execSpeedBatch(targets: List<DcTestItem>, label: String) {
+        _dcState.update {
+            it.copy(speedBatchRunning = true, speedBatchDone = 0, speedBatchTotal = targets.size)
+        }
+        log("$label：${targets.size} 个 IP")
+        val s = _settings.value
+        val ipText = targets.joinToString(",") { it.address() }
+        val config = s.copy(
+            pingMode = UiSettings.PING_TCP,
+            pingTimes = 1,
+            officialDelayMs = 100_000,
+            nsbDelayMs = 100_000,
+            maxLossRate = 1.0,
+        ).toCfstConfig().copy(
+            ipText = ipText,
+            testCount = targets.size,
+            printNum = targets.size,
+            httpingColo = "",
+        )
+        val configJson = ProtocolJson.json.encodeToString(
+            com.masgzy.cfstmobile.model.CfstConfig.serializer(),
+            config,
+        )
+        val current = try {
+            CfstEngineFactory.create(configJson)
+        } catch (e: Exception) {
+            _dcState.update { it.copy(speedBatchRunning = false, message = "创建测速引擎失败：${e.message}") }
+            return
+        }
+        speedSession = current
+        try {
+            if (!current.start()) {
+                _dcState.update { it.copy(speedBatchRunning = false, message = "引擎已在运行中") }
+                return
             }
-            log(if (continued) "继续测速：${targets.size} 个未测 IP" else "一键测速：${targets.size} 个 IP")
-            val ipText = targets.joinToString(",") { it.address() }
-            val config = s.copy(
-                pingMode = UiSettings.PING_TCP,
-                pingTimes = 1,
-                officialDelayMs = 100_000,
-                nsbDelayMs = 100_000,
-                maxLossRate = 1.0,
-            ).toCfstConfig().copy(
-                ipText = ipText,
-                testCount = targets.size,
-                printNum = targets.size,
-                httpingColo = "",
-            )
-            val configJson = ProtocolJson.json.encodeToString(
-                com.masgzy.cfstmobile.model.CfstConfig.serializer(),
-                config,
-            )
-            val current = try {
-                CfstEngineFactory.create(configJson)
-            } catch (e: Exception) {
-                _dcState.update { it.copy(speedBatchRunning = false, message = "创建测速引擎失败：${e.message}") }
-                return@launch
-            }
-            speedSession = current
-            try {
-                if (!current.start()) {
-                    _dcState.update { it.copy(speedBatchRunning = false, message = "引擎已在运行中") }
-                    return@launch
-                }
-                while (isActive) {
-                    delay(POLL_INTERVAL_MS)
-                    val progress = current.poll()
-                    progress.download?.let { dl ->
-                        _dcState.update {
-                            it.copy(speedBatchDone = dl.tested.toInt(), speedBatchTotal = dl.total.toInt().coerceAtLeast(targets.size))
-                        }
+            while (currentCoroutineContext().isActive) {
+                delay(POLL_INTERVAL_MS)
+                val progress = current.poll()
+                progress.download?.let { dl ->
+                    _dcState.update {
+                        it.copy(speedBatchDone = dl.tested.toInt(), speedBatchTotal = dl.total.toInt().coerceAtLeast(targets.size))
                     }
-                    if (progress.phase == "done" || progress.phase == "error") break
                 }
-                val result = current.takeResult()
-                val speeds = result?.items?.associate { it.address() to it.downloadSpeedMbps } ?: emptyMap()
-                val merged = _dcState.value.results.map { item ->
-                    speeds[item.address()]?.let { v -> item.copy(speedMbps = v) } ?: item
-                }.toMutableList().also { sortDcResults(it, dcSortKey) }
-                _dcState.update {
-                    it.copy(
-                        results = merged,
-                        speedBatchRunning = false,
-                        message = "测速完成：${speeds.count { v -> v.value != null }} 个 IP 获得速度",
-                    )
-                }
-                log("批量测速完成：${speeds.size} 个结果")
-            } catch (e: CancellationException) {
-                runCatching { current.stop() }
-                _dcState.update { it.copy(speedBatchRunning = false) }
-                throw e
-            } catch (e: Exception) {
-                _dcState.update { it.copy(speedBatchRunning = false, message = "测速失败：${e.message}") }
-            } finally {
-                speedSession = null
-                runCatching { current.close() }
+                if (progress.phase == "done" || progress.phase == "error") break
             }
+            val result = current.takeResult()
+            val speeds = result?.items?.associate { it.address() to it.downloadSpeedMbps } ?: emptyMap()
+            val merged = _dcState.value.results.map { item ->
+                speeds[item.address()]?.let { v -> item.copy(speedMbps = v) } ?: item
+            }.toMutableList().also { sortDcResults(it, dcSortKey) }
+            _dcState.update {
+                it.copy(
+                    results = merged,
+                    speedBatchRunning = false,
+                    message = "测速完成：${speeds.count { v -> v.value != null }} 个 IP 获得速度",
+                )
+            }
+            log("$label 完成：${speeds.count { v -> v.value != null }} 个 IP 获得速度")
+        } catch (e: CancellationException) {
+            runCatching { current.stop() }
+            _dcState.update { it.copy(speedBatchRunning = false) }
+            throw e
+        } catch (e: Exception) {
+            _dcState.update { it.copy(speedBatchRunning = false, message = "测速失败：${e.message}") }
+        } finally {
+            speedSession = null
+            runCatching { current.close() }
         }
     }
 

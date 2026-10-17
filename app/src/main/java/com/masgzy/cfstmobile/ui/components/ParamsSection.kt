@@ -3,6 +3,11 @@ package com.masgzy.cfstmobile.ui.components
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,10 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -34,10 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.BUILT_IN_IPS_V6
 import com.masgzy.cfstmobile.data.SpeedUrlPresets
 import com.masgzy.cfstmobile.data.UiSettings
@@ -101,7 +104,7 @@ private fun OfficialParams(
 ) {
     OptionGrid(
         left = {
-            OptionItem(label = "🌐 IP 类型") {
+            OptionItem(label = "IP 类型", icon = R.drawable.ic_sym_language) {
                 CfDropdown(
                     label = null,
                     selected = if (settings.ipType == UiSettings.IP_V6) "IPv6" else "IPv4",
@@ -114,7 +117,7 @@ private fun OfficialParams(
             }
         },
         right = {
-            OptionItem(label = "🚪 测试端口") {
+            OptionItem(label = "测试端口", icon = R.drawable.ic_sym_settings_ethernet) {
                 PortDropdown(value = settings.officialPort) { v -> onUpdate { it.copy(officialPort = v) } }
             }
         },
@@ -123,14 +126,14 @@ private fun OfficialParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "🚀 并发数量") {
+            OptionItem(label = "并发数量", icon = R.drawable.ic_sym_rocket_launch) {
                 IntControl(value = settings.officialThreads, placeholder = "默认 100") { v ->
                     onUpdate { it.copy(officialThreads = v) }
                 }
             }
         },
         right = {
-            OptionItem(label = "⏱️ 扫描合格延迟") {
+            OptionItem(label = "扫描合格延迟", icon = R.drawable.ic_sym_timer) {
                 IntControl(value = settings.officialDelayMs, placeholder = "默认 500ms") { v ->
                     onUpdate { it.copy(officialDelayMs = v) }
                 }
@@ -141,14 +144,14 @@ private fun OfficialParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "📉 测试合格速度") {
+            OptionItem(label = "测试合格速度", icon = R.drawable.ic_sym_speed) {
                 DoubleControl(value = settings.officialSpeedMin, placeholder = "默认 0.1MB/s") { v ->
                     onUpdate { it.copy(officialSpeedMin = v) }
                 }
             }
         },
         right = {
-            OptionItem(label = "🏁 测速结果数量") {
+            OptionItem(label = "测速结果数量", icon = R.drawable.ic_sym_flag) {
                 IntControl(value = settings.officialSpeedLimit, placeholder = "0 关闭测速") { v ->
                     onUpdate { it.copy(officialSpeedLimit = v) }
                 }
@@ -159,7 +162,7 @@ private fun OfficialParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "🧪 自动测速") {
+            OptionItem(label = "自动测速", icon = R.drawable.ic_sym_science) {
                 CfDropdown(
                     label = null,
                     selected = if (settings.officialAutoSpeed) "开启" else "关闭",
@@ -177,7 +180,7 @@ private fun OfficialParams(
             }
         },
         right = {
-            OptionItem(label = "🏢 数据中心") {
+            OptionItem(label = "数据中心", icon = R.drawable.ic_sym_apartment) {
                 CfTextField(
                     value = settings.officialTargetDc,
                     onValueChange = { v -> onUpdate { it.copy(officialTargetDc = v) } },
@@ -203,7 +206,7 @@ private fun OfficialParams(
     }
 
     // 自动上传（对齐 CFData officialAutoUploadAccount）
-    OptionItem(label = "⬆ 自动上传") {
+    OptionItem(label = "自动上传", icon = R.drawable.ic_sym_upload) {
         CfDropdown(
             label = null,
             selected = autoUploadLabel(settings.officialAutoUpload),
@@ -239,51 +242,77 @@ private fun CompactSection(
     onDelete: () -> Unit,
     onUpdate: (((UiSettings) -> UiSettings)) -> Unit,
 ) {
-    OptionItem(label = "🧹 精简地址库") {
+    OptionItem(label = "精简地址库", icon = R.drawable.ic_sym_cleaning_services) {
         Column {
+            // 说明独立成行（不与按钮同行，避免窄屏截断）
+            Text(
+                text = if (compactState.libCount > 0) {
+                    "本地精简库：${compactState.libCount} 个 /24 子网"
+                } else {
+                    "按 /24 子网探测 TCP:80，仅保留活跃子网"
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            // 按钮行独立：运行时右侧带轮次信息
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (compactState.libCount > 0) {
-                        "本地精简库：${compactState.libCount} 个 /24 子网"
-                    } else {
-                        "按 /24 子网探测 TCP:80，仅保留活跃子网"
-                    },
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                if (compactState.libCount > 0) {
-                    TextButton(onClick = onDelete) { Text("删除") }
-                }
                 if (compactState.running) {
                     TextButton(onClick = onStop) { Text("停止") }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "第 ${compactState.pass} 轮 · 保留 ${compactState.found} 个",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 } else {
+                    if (compactState.libCount > 0) {
+                        TextButton(onClick = onDelete) { Text("删除") }
+                    }
                     TextButton(onClick = onStart) { Text("开始精简") }
+                    Spacer(Modifier.weight(1f))
+                    if (compactState.doneCount != null) {
+                        Text(
+                            text = "已保留 ${compactState.doneCount} 个子网",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
-            if (compactState.running) {
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { compactState.percent.coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(6.dp),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = compactState.status.ifEmpty { "精简准备中" } +
-                        " · 第 ${compactState.pass} 轮 · 已保留 ${compactState.found} 个子网" +
-                        (if (compactState.stopRequested) " · 正在停止…" else ""),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else if (compactState.phase == "error" && compactState.message != null) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = compactState.message.orEmpty(),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.error,
-                )
+            AnimatedVisibility(
+                visible = compactState.running,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(2.dp))
+                    LinearProgressIndicator(
+                        progress = { compactState.percent.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = compactState.status.ifEmpty { "精简准备中" } +
+                            (if (compactState.stopRequested) " · 正在停止…" else ""),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = compactState.phase == "error" && compactState.message != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = compactState.message.orEmpty(),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
             if (compactState.libCount > 0 || settings.officialUseCompactLib) {
                 Spacer(Modifier.height(2.dp))
@@ -320,14 +349,16 @@ private fun NonStdParams(
         }
     }
 
-    OptionItem(label = "📄 IP 文件") {
+    OptionItem(label = "IP 文件", icon = R.drawable.ic_sym_description) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = settings.nsbFileName.ifEmpty { "未选择文件（txt/csv）" },
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                // 与下方/相邻 TextField 内容文字对齐（M3 TextField 内容有 16dp 起始内边距，
+                // option-item 内容区只有 12dp，补 4dp 消除“未选择文件”偏左的视觉错位）
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
             )
             TextButton(onClick = { filePicker.launch(arrayOf("text/plain", "text/csv")) }) {
                 Text(if (settings.nsbFileName.isEmpty()) "选择文件" else "重新选择")
@@ -341,7 +372,7 @@ private fun NonStdParams(
     }
     OptionGap()
 
-    OptionItem(label = "🌐 网络 URL") {
+    OptionItem(label = "网络 URL", icon = R.drawable.ic_sym_language) {
         CfTextField(
             value = settings.nsbSourceUrl,
             onValueChange = { v -> onUpdate { it.copy(nsbSourceUrl = v) } },
@@ -350,7 +381,7 @@ private fun NonStdParams(
     }
     OptionGap()
 
-    OptionItem(label = "📝 手动列表（可选）") {
+    OptionItem(label = "手动列表（可选）", icon = R.drawable.ic_sym_edit_note) {
         CfTextField(
             value = settings.customIpText,
             onValueChange = { v -> onUpdate { it.copy(customIpText = v) } },
@@ -363,7 +394,7 @@ private fun NonStdParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "🚪 备用端口") {
+            OptionItem(label = "备用端口", icon = R.drawable.ic_sym_settings_ethernet) {
                 IntControl(
                     value = settings.nsbFallbackPort,
                     placeholder = if (settings.nsbTls) "TLS 默认 443" else "TLS 关闭默认 80",
@@ -371,7 +402,7 @@ private fun NonStdParams(
             }
         },
         right = {
-            OptionItem(label = "🚀 并发数量") {
+            OptionItem(label = "并发数量", icon = R.drawable.ic_sym_rocket_launch) {
                 IntControl(value = settings.nsbThreads, placeholder = "默认 100") { v ->
                     onUpdate { it.copy(nsbThreads = v) }
                 }
@@ -382,14 +413,14 @@ private fun NonStdParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "⏱️ 扫描合格延迟") {
+            OptionItem(label = "扫描合格延迟", icon = R.drawable.ic_sym_timer) {
                 IntControl(value = settings.nsbDelayMs, placeholder = "默认 0ms") { v ->
                     onUpdate { it.copy(nsbDelayMs = v) }
                 }
             }
         },
         right = {
-            OptionItem(label = "🎯 扫描合格数量") {
+            OptionItem(label = "扫描合格数量", icon = R.drawable.ic_sym_adjust) {
                 IntControl(value = settings.nsbResultLimit, placeholder = "非 0 正整数") { v ->
                     onUpdate { it.copy(nsbResultLimit = v) }
                 }
@@ -400,14 +431,14 @@ private fun NonStdParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "📉 测试合格速度") {
+            OptionItem(label = "测试合格速度", icon = R.drawable.ic_sym_speed) {
                 DoubleControl(value = settings.nsbSpeedMin, placeholder = "默认 0.1MB/s") { v ->
                     onUpdate { it.copy(nsbSpeedMin = v) }
                 }
             }
         },
         right = {
-            OptionItem(label = "🏁 测速结果数量") {
+            OptionItem(label = "测速结果数量", icon = R.drawable.ic_sym_flag) {
                 IntControl(value = settings.nsbSpeedLimit, placeholder = "0 关闭测速") { v ->
                     onUpdate { it.copy(nsbSpeedLimit = v) }
                 }
@@ -418,7 +449,7 @@ private fun NonStdParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "🧪 自动测速") {
+            OptionItem(label = "自动测速", icon = R.drawable.ic_sym_science) {
                 CfDropdown(
                     label = null,
                     selected = if (settings.nsbAutoSpeed) "开启" else "关闭",
@@ -429,7 +460,7 @@ private fun NonStdParams(
         },
         right = {
             // 测速并发（对齐 CFData nsbSpeedTest：同时测速的 IP 数量，1 最准）
-            OptionItem(label = "⚡ 测速并发") {
+            OptionItem(label = "测速并发", icon = R.drawable.ic_sym_bolt) {
                 IntControl(value = settings.nsbSpeedThreads, placeholder = "1 最准，0 不测速") { v ->
                     onUpdate { it.copy(nsbSpeedThreads = v) }
                 }
@@ -440,7 +471,7 @@ private fun NonStdParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "🏢 数据中心") {
+            OptionItem(label = "数据中心", icon = R.drawable.ic_sym_apartment) {
                 CfTextField(
                     value = settings.nsbTargetDc,
                     onValueChange = { v -> onUpdate { it.copy(nsbTargetDc = v) } },
@@ -450,7 +481,7 @@ private fun NonStdParams(
         },
         right = {
             // 精简表格（对齐 CFData nsbCompactView，默认精简）
-            OptionItem(label = "🧾 表格视图") {
+            OptionItem(label = "表格视图", icon = R.drawable.ic_sym_receipt_long) {
                 CfDropdown(
                     label = null,
                     selected = if (settings.nsbCompactView) "精简表格" else "完整表格",
@@ -464,7 +495,7 @@ private fun NonStdParams(
 
     OptionGrid(
         left = {
-            OptionItem(label = "🔗 TLS 模式") {
+            OptionItem(label = "TLS 模式", icon = R.drawable.ic_sym_lock) {
                 CfDropdown(
                     label = null,
                     selected = if (settings.nsbTls) "开启" else "关闭",
@@ -487,7 +518,7 @@ private fun NonStdParams(
             }
         },
         right = {
-            OptionItem(label = "🛠️ 输出文件名") {
+            OptionItem(label = "输出文件名", icon = R.drawable.ic_sym_output) {
                 CfTextField(
                     value = settings.nsbOutFile,
                     onValueChange = { v -> onUpdate { it.copy(nsbOutFile = v) } },
@@ -499,7 +530,7 @@ private fun NonStdParams(
     OptionGap()
 
     // 自动上传（对齐 CFData nsbAutoUploadAccount）
-    OptionItem(label = "⬆ 自动上传") {
+    OptionItem(label = "自动上传", icon = R.drawable.ic_sym_upload) {
         CfDropdown(
             label = null,
             selected = autoUploadLabel(settings.nsbAutoUpload),
@@ -517,7 +548,7 @@ private fun SharedParams(
     official: Boolean,
     onUpdate: (((UiSettings) -> UiSettings)) -> Unit,
 ) {
-    OptionItem(label = "📡 扫描方式") {
+    OptionItem(label = "扫描方式", icon = R.drawable.ic_sym_radar) {
         Column {
             CfDropdown(
                 label = null,
@@ -538,7 +569,7 @@ private fun SharedParams(
     }
     OptionGap()
 
-    OptionItem(label = "🔗 测速网址") {
+    OptionItem(label = "测速网址", icon = R.drawable.ic_sym_link) {
         Column {
             CfDropdown(
                 label = null,
@@ -579,7 +610,11 @@ private fun SharedParams(
                     },
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "恢复自动选择", modifier = Modifier.size(18.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.ic_sym_refresh),
+                        contentDescription = "恢复自动选择",
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
         }
@@ -617,9 +652,18 @@ private fun AdvancedParams(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            painter = painterResource(
+                if (expanded) R.drawable.ic_sym_keyboard_arrow_up else R.drawable.ic_sym_keyboard_arrow_down,
+            ),
             contentDescription = null,
             modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(4.dp))
+        Icon(
+            painter = painterResource(R.drawable.ic_sym_tune),
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.width(4.dp))
@@ -631,10 +675,15 @@ private fun AdvancedParams(
         )
     }
 
-    if (expanded) {
+    AnimatedVisibility(
+        visible = expanded,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically(),
+    ) {
+        Column {
         OptionGap()
         if (official) {
-            OptionItem(label = "🧩 IP 段") {
+            OptionItem(label = "IP 段", icon = R.drawable.ic_sym_extension) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = if (settings.ipType == UiSettings.IP_V6) {
@@ -713,6 +762,7 @@ private fun AdvancedParams(
             checked = settings.testAllIpv4,
             onChecked = { checked -> onUpdate { it.copy(testAllIpv4 = checked) } },
         )
+        }
     }
 
     if (showSegments) {
