@@ -270,6 +270,28 @@ fun SettingsDialog(viewModel: TestViewModel, onDismiss: () -> Unit) {
                     )
                 }
 
+                // ---------------- 外观 ----------------
+                SectionLabel("外观")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "动态取色（Material You）")
+                        Text(
+                            text = "Android 12+ 跟随系统壁纸取色；关闭使用 Cloudflare 蓝",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = settings.dynamicColors,
+                        onCheckedChange = { checked -> viewModel.updateSettings { it.copy(dynamicColors = checked) } },
+                    )
+                }
+
                 // ---------------- 关于 ----------------
                 SectionLabel("关于")
                 Card(

@@ -1,13 +1,21 @@
 package com.masgzy.cfstmobile.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
-// CFSTAPP 同款 Cloudflare 蓝主色 + 橙色强调；延迟/丢包沿用其三档配色
+/**
+ * 主题：默认 Material You（Android 12+ 从壁纸动态取色），
+ * 低版本或用户关闭动态取色时回退 Cloudflare 蓝品牌色。
+ * 延迟/丢包三档配色为语义色，不随主题变化（与 CFSTAPP 一致）。
+ */
 val CfBlue = Color(0xFF1976D2)
 val CfBlueDark = Color(0xFF1565C0)
 val CfBlueLight = Color(0xFFE3F2FD)
@@ -37,15 +45,25 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun CfstTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    /** Material You 动态取色开关（Android 12+ 生效，其余版本恒为品牌色） */
+    dynamicColors: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    val colorScheme = when {
+        dynamicColors && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = colorScheme,
         content = content,
     )
 }
 
-/** 延迟三档配色（<100 绿 / <200 橙 / 其余红），与 CFSTAPP 一致 */
+/** 延迟三档配色（<100 绿 / <200 橙 / 其余红），语义色不随动态取色变化 */
 fun delayColor(delayMs: Double): Color = when {
     delayMs < 100 -> OkGreen
     delayMs < 200 -> WarnOrange
