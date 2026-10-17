@@ -3,6 +3,7 @@ package com.masgzy.cfstmobile.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -33,13 +35,14 @@ import com.masgzy.cfstmobile.viewmodel.TestUiState
 
 /**
  * 结果区（CFSTAPP 同款）：标题 + 计数、排序筛选 Chips、定高 LazyColumn，
- * 点击条目复制 ip:port。
+ * 点击条目复制 ip:port；标题行附“数据中心”入口（二次详细测试）。
  */
 @Composable
 fun ResultsSection(
     state: TestUiState,
     sortBy: String,
     onSortChange: (String) -> Unit,
+    onDcTestClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sorted = remember(state.results, sortBy) { state.results.sortedByMode(sortBy) }
@@ -51,7 +54,14 @@ fun ResultsSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("测速结果", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("共 ${sorted.size} 个", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = onDcTestClick,
+                        enabled = state.results.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) { Text("数据中心", fontSize = 13.sp) }
+                    Text("共 ${sorted.size} 个", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
 
             Row(

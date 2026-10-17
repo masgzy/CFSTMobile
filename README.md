@@ -32,6 +32,7 @@ CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它
 | 📤 **结果导出** | TXT(CFData-WEB 兼容 `IP:端口#数据中心`)/ CSV(XIU2 CloudflareST 兼容列序),实时预览 + 剪贴板 |
 | ☁️ **edgetunnel 上传** | 结果直接写入 edgetunnel(CM 系 Worker)订阅 `ADD.txt`,覆盖/追加双模式,多账户管理;协议与 CFData-WEB 一致 |
 | 🐙 **GitHub 上传** | 优选结果提交到 GitHub 仓库(Contents API,新建/更新自动识别),raw 直链可分享/订阅;与 CFData-WEB 同一 API 行为 |
+| 🗺️ **数据中心二次详细测试** | 结果按数据中心(Colo)聚合(官方 locations 位置表优先,CFData 同源回退),点选后对该 DC 全部 IP 二次精测:tcping×10 / httping×3,统计 min/avg/max/丢包;与 CFData-WEB 官方模式同语义 |
 | 🧩 **Material You** | Material 3 组件 + Android 12+ 动态取色(可关闭回退品牌蓝);深色模式自适应 |
 | 🗄️ **历史记录** | 测速结果本地留档,随时回看、再次导出 |
 | 🔌 **演示模式** | 未检测到引擎 `.so` 时自动降级为 Mock 数据,UI 开发/体验不受阻 |
@@ -52,7 +53,7 @@ Release 产物由 GitHub Actions 自动构建并以仓库 Secrets 证书签名,�
 1. 首页点右上 ⚙️ 进入设置,选择 IP 来源(默认内置全部官方段)并按需调整并发/端口/阈值;
 2. 优选域名 / 反代 IP:切到「自定义 IP」逐行填入,支持 `优选域名`、`域名:2083`、`IP:8443`、CIDR 混排;域名条目自动解析并保留原始输入;
 3. 回到首页点击「开始测速」,实时查看延迟阶段与下载阶段进度;
-4. 结束后在结果列表点击条目可复制 `IP:端口`;
+4. 结束后在结果列表点击条目可复制 `IP:端口`;点「数据中心」可按数据中心二次精测(tcping 模式会先逐 IP trace 识别归属);
 5. 点「导出」打开底部抽屉:选格式复制,或选择 edgetunnel 账户一键上传。
 
 ## 🔄 从 CFData-WEB 迁移
@@ -66,6 +67,7 @@ CFSTMobile 在导出与上传两条链路上与 CFData-WEB 对齐,**无需重新
 | edgetunnel 上传 | 登录 `/login` → 读写 `/admin/ADD.txt`,覆盖/追加 | ✅ 完全相同的协议与语义 |
 | 非标模式 | 上传 `host 端口` 列表,解析展开 ≤50 记录,结果含原始输入列 | ✅ 同一语义(`域名[:端口]` 混排,结果带「原始输入」) |
 | GitHub 上传 | Contents API:取 SHA → PUT,默认 `main` 分支 | ✅ 同一 API 与默认值(`GithubClient`) |
+| 数据中心二次详细测试 | 官方模式:扫描含 colo → 聚合 `扫描完成等待选择` → 选中后 tcping×10 / httping×3,排序 丢包→min→max→avg | ✅ 同语义(`DcProbe`/`aggregateDcList`):tcping 结果先 trace 补 colo 再聚合,倍率/次数/排序一致 |
 | 多账户管理 | 浏览器 localStorage,可选加密保存密码 | ✅ 应用私有存储,可选保存密码 |
 | 浏览器内测速 | ✅ Web 版 | ➖ 移动端走原生引擎,速度更准 |
 
