@@ -3,6 +3,7 @@ package com.masgzy.cfstmobile
 import com.masgzy.cfstmobile.model.CfstConfig
 import com.masgzy.cfstmobile.model.CfstProgress
 import com.masgzy.cfstmobile.model.CfstResult
+import com.masgzy.cfstmobile.model.CfstResultItem
 import com.masgzy.cfstmobile.model.ProtocolJson
 import com.masgzy.cfstmobile.model.SortMode
 import com.masgzy.cfstmobile.model.sortedByMode
