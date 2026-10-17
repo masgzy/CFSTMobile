@@ -36,9 +36,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.ui.components.ControlButtons
 import com.masgzy.cfstmobile.ui.components.ResultsSection
 import com.masgzy.cfstmobile.ui.components.StatusCard
+import com.masgzy.cfstmobile.ui.dialogs.DcTestDialog
 import com.masgzy.cfstmobile.ui.dialogs.ExportDialog
 import com.masgzy.cfstmobile.ui.dialogs.HistoryDialog
 import com.masgzy.cfstmobile.ui.dialogs.SettingsDialog
@@ -55,6 +57,11 @@ fun AppRoot(viewModel: TestViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showDcTest by remember { mutableStateOf(false) }
+    val openDcTest: () -> Unit = {
+        showDcTest = true
+        if (viewModel.dcState.value.step == DcStep.IDLE) viewModel.startDcTest()
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.toast.collect { message ->
@@ -113,6 +120,7 @@ fun AppRoot(viewModel: TestViewModel) {
                 state = uiState,
                 sortBy = settings.sortBy,
                 onSortChange = { mode -> viewModel.updateSettings { it.copy(sortBy = mode) } },
+                onDcTestClick = openDcTest,
             )
         }
     }
@@ -125,6 +133,9 @@ fun AppRoot(viewModel: TestViewModel) {
     }
     if (showHistory) {
         HistoryDialog(viewModel = viewModel, onDismiss = { showHistory = false })
+    }
+    if (showDcTest) {
+        DcTestDialog(viewModel = viewModel, onDismiss = { showDcTest = false })
     }
 }
 
