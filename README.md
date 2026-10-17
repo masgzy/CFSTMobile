@@ -24,12 +24,12 @@ CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它
 
 | 功能 | 说明 |
 |------|------|
-| 🔍 **延迟测速** | TCPing / HTTPing 双模式,每 IP 多次采样取平均;数据中心(Colo)识别 |
+| 🔍 **延迟测速** | TCPing / HTTPing 双模式,每 IP 多次采样取平均;数据中心(Colo)识别;HTTPing 延迟上限按端口自动放宽(TLS ×4.0 / 明文 ×1.3,与 CFData-WEB 同语义) |
 | 🚀 **下载测速** | 官方大流量端点,单 IP 定时采样,中位数-MAD 高斯加权算法 |
 | 🎯 **智能筛选** | z-score 三维(速度/延迟/丢包)综合评分排序;延迟/丢包/速度阈值过滤 |
 | 🌐 **IP 来源** | 内置 Cloudflare 官方段勾选、自定义 CIDR(支持 `1.2.3.0/24=50` 定量采样)、在线获取(可配 GitHub 镜像) |
 | 🔀 **非标优选** | 自定义域名 + 非标 TLS 端口:输入 `域名[:端口]` 自动 DNS 解析展开(IPv4 优先,单域名 ≤50 记录),结果保留原始输入;协议与 CFData-WEB 非标模式一致 |
-| 📤 **结果导出** | TXT(CFData-WEB 兼容 `IP:端口#数据中心`)/ CSV(XIU2 CloudflareST 兼容列序),实时预览 + 剪贴板 |
+| 📤 **结果导出** | TXT(CFData-WEB 兼容 `IP:端口#数据中心`)/ CSV(XIU2 CloudflareST 兼容列序),实时预览 + 剪贴板;支持行范围 / IP 类型 / 字段选择 / TXT 分隔符 / IPv6 方括号自定义(与 CFData-WEB 导出弹窗同管线) |
 | ☁️ **edgetunnel 上传** | 结果直接写入 edgetunnel(CM 系 Worker)订阅 `ADD.txt`,覆盖/追加双模式,多账户管理;协议与 CFData-WEB 一致 |
 | 🐙 **GitHub 上传** | 优选结果提交到 GitHub 仓库(Contents API,新建/更新自动识别),raw 直链可分享/订阅;与 CFData-WEB 同一 API 行为 |
 | 🗺️ **数据中心二次详细测试** | 结果按数据中心(Colo)聚合(官方 locations 位置表优先,CFData 同源回退),点选后对该 DC 全部 IP 二次精测:tcping×10 / httping×3,统计 min/avg/max/丢包;与 CFData-WEB 官方模式同语义 |

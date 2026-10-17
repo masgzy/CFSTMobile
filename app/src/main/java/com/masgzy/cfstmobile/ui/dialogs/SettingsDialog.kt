@@ -241,6 +241,11 @@ fun SettingsDialog(viewModel: TestViewModel, onDismiss: () -> Unit) {
                 IntField(label = "延迟上限（ms）", value = settings.maxDelayMs) { v ->
                     viewModel.updateSettings { it.copy(maxDelayMs = v) }
                 }
+                Text(
+                    text = "HTTPing 模式自动放宽：TLS 端口 ×4.0、明文端口 ×1.3（与 CFData-WEB 一致），下限不放宽",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 DoubleField(label = "丢包率上限（0~1）", value = settings.maxLossRate) { v ->
                     viewModel.updateSettings { it.copy(maxLossRate = v) }
                 }
