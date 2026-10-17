@@ -31,7 +31,7 @@ object SpeedUrlPresets {
         CM -> "https://cf.090227.xyz/__down?bytes=99999999"
         MOBILE -> "https://speed.okl.abrdns.com"
         CUSTOM -> custom.trim()
-        else -> DEFAULT_DOWNLOAD_URL
+        else -> UiSettings.DEFAULT_DOWNLOAD_URL
     }
 }
 
@@ -102,7 +102,7 @@ data class UiSettings(
         tcpPort = tcpPort,
         pingMode = pingMode,
         httpingUrl = httpingUrl.trim().ifBlank { null },
-        httpingColo = targetDc.trim().ifBlank { null },
+        httpingColo = targetDc.trim(),
         url = if (enableDownload) downloadUrl.trim() else "",
         disableDownload = !enableDownload,
         downloadTime = downloadTimeSecs,
