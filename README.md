@@ -30,6 +30,7 @@ CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它
 | 🌐 **IP 来源** | 内置 Cloudflare 官方段勾选、自定义 CIDR(支持 `1.2.3.0/24=50` 定量采样)、在线获取(可配 GitHub 镜像) |
 | 📤 **结果导出** | TXT(CFData-WEB 兼容 `IP:端口#数据中心`)/ CSV(XIU2 CloudflareST 兼容列序),实时预览 + 剪贴板 |
 | ☁️ **edgetunnel 上传** | 结果直接写入 edgetunnel(CM 系 Worker)订阅 `ADD.txt`,覆盖/追加双模式,多账户管理;协议与 CFData-WEB 一致 |
+| 🐙 **GitHub 上传** | 优选结果提交到 GitHub 仓库(Contents API,新建/更新自动识别),raw 直链可分享/订阅;与 CFData-WEB 同一 API 行为 |
 | 🧩 **Material You** | Material 3 组件 + Android 12+ 动态取色(可关闭回退品牌蓝);深色模式自适应 |
 | 🗄️ **历史记录** | 测速结果本地留档,随时回看、再次导出 |
 | 🔌 **演示模式** | 未检测到引擎 `.so` 时自动降级为 Mock 数据,UI 开发/体验不受阻 |
@@ -61,6 +62,7 @@ CFSTMobile 在导出与上传两条链路上与 CFData-WEB 对齐,**无需重新
 | TXT 导出 | `IP:端口#数据中心`,compact 字段、`-` 分隔 | ✅ 同一格式(`ExportFormatter.toTxt`) |
 | CSV 导出 | 表头 + 自定义字段 | ✅ XIU2 CloudflareST 列序互通 |
 | edgetunnel 上传 | 登录 `/login` → 读写 `/admin/ADD.txt`,覆盖/追加 | ✅ 完全相同的协议与语义 |
+| GitHub 上传 | Contents API:取 SHA → PUT,默认 `main` 分支 | ✅ 同一 API 与默认值(`GithubClient`) |
 | 多账户管理 | 浏览器 localStorage,可选加密保存密码 | ✅ 应用私有存储,可选保存密码 |
 | 浏览器内测速 | ✅ Web 版 | ➖ 移动端走原生引擎,速度更准 |
 
