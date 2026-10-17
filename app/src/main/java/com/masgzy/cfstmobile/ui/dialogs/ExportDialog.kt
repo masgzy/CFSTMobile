@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
@@ -56,6 +57,9 @@ import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.data.EdgetunnelClient
 import com.masgzy.cfstmobile.data.EdgetunnelStore
 import com.masgzy.cfstmobile.data.EtAccount
+import com.masgzy.cfstmobile.data.GhConfig
+import com.masgzy.cfstmobile.data.GithubClient
+import com.masgzy.cfstmobile.data.GithubStore
 import com.masgzy.cfstmobile.model.CfstResultItem
 import com.masgzy.cfstmobile.model.ExportFormatter
 import com.masgzy.cfstmobile.ui.components.copyToClipboard
@@ -96,6 +100,20 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
     var etUploading by remember { mutableStateOf(false) }
     var etStatus by remember { mutableStateOf("等待上传") }
     var etStatusOk by remember { mutableStateOf<Boolean?>(null) }
+
+    // ---------------- GitHub 上传状态 ----------------
+    val ghStore = remember { GithubStore(context) }
+    val ghSaved = remember { ghStore.load() }
+    var ghToken by remember { mutableStateOf(ghSaved.token) }
+    var ghOwner by remember { mutableStateOf(ghSaved.owner) }
+    var ghRepo by remember { mutableStateOf(ghSaved.repo) }
+    var ghBranch by remember { mutableStateOf(ghSaved.branch) }
+    var ghPath by remember { mutableStateOf(ghSaved.path) }
+    var ghMessage by remember { mutableStateOf(ghSaved.message) }
+    var ghSaveToken by remember { mutableStateOf(ghSaved.saveToken) }
+    var ghUploading by remember { mutableStateOf(false) }
+    var ghStatus by remember { mutableStateOf("等待上传") }
+    var ghStatusOk by remember { mutableStateOf<Boolean?>(null) }
 
     // 选中账户变化时填充表单（未保存密码的账户密码留空待输入）
     LaunchedEffect(selectedName, accounts) {
@@ -376,10 +394,213 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             )
 
+            GithubSection(
+                ghToken = ghToken,
+                ghOwner = ghOwner,
+                ghRepo = ghRepo,
+                ghBranch = ghBranch,
+                ghPath = ghPath,
+                ghMessage = ghMessage,
+                ghSaveToken = ghSaveToken,
+                ghUploading = ghUploading,
+                ghStatus = ghStatus,
+                ghStatusOk = ghStatusOk,
+                resultCount = results.size,
+                uploadContent = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(results),
+                onToken = { ghToken = it },
+                onOwner = { ghOwner = it },
+                onRepo = { ghRepo = it },
+                onBranch = { ghBranch = it },
+                onPath = { ghPath = it },
+                onMessage = { ghMessage = it },
+                onSaveToken = { ghSaveToken = it },
+                onSaveConfig = {
+                    ghStore.save(
+                        GhConfig(
+                            token = if (ghSaveToken) ghToken.trim() else "",
+                            owner = ghOwner.trim(),
+                            repo = ghRepo.trim(),
+                            branch = ghBranch.trim().ifBlank { GithubClient.DEFAULT_BRANCH },
+                            path = ghPath.trim().ifBlank { GithubClient.DEFAULT_PATH },
+                            message = ghMessage.trim().ifBlank { GithubClient.DEFAULT_MESSAGE },
+                            saveToken = ghSaveToken,
+                        ),
+                    )
+                    ghStatus = "GitHub 配置已保存"
+                    ghStatusOk = true
+                },
+                onUpload = {
+                    scope.launch {
+                        ghUploading = true
+                        ghStatusOk = null
+                        GithubClient.upload(
+                            token = ghToken,
+                            owner = ghOwner,
+                            repo = ghRepo,
+                            branch = ghBranch,
+                            path = ghPath,
+                            message = ghMessage,
+                            content = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(results),
+                            onStatus = { msg -> ghStatus = msg },
+                        ).fold(
+                            onSuccess = { url ->
+                                ghStatus = "上传成功：$url"
+                                ghStatusOk = true
+                            },
+                            onFailure = { e ->
+                                ghStatus = "上传失败：${e.message ?: "未知错误"}"
+                                ghStatusOk = false
+                            },
+                        )
+                        ghUploading = false
+                    }
+                },
+            )
+
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                 Text("关闭")
             }
         }
+    }
+}
+
+/**
+ * GitHub 上传区块:配置持久化到 [GithubStore],上传走 [GithubClient]
+ * (Contents API,行为对齐 CFData-WEB);订阅内容与 edgetunnel 一致使用
+ * TXT 行格式,CSV 仅用于表格工具对表。
+ */
+@Composable
+private fun GithubSection(
+    ghToken: String,
+    ghOwner: String,
+    ghRepo: String,
+    ghBranch: String,
+    ghPath: String,
+    ghMessage: String,
+    ghSaveToken: Boolean,
+    ghUploading: Boolean,
+    ghStatus: String,
+    ghStatusOk: Boolean?,
+    resultCount: Int,
+    uploadContent: String,
+    onToken: (String) -> Unit,
+    onOwner: (String) -> Unit,
+    onRepo: (String) -> Unit,
+    onBranch: (String) -> Unit,
+    onPath: (String) -> Unit,
+    onMessage: (String) -> Unit,
+    onSaveToken: (Boolean) -> Unit,
+    onSaveConfig: () -> Unit,
+    onUpload: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        HorizontalDivider()
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.CloudSync,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(text = "GitHub 上传", fontWeight = FontWeight.Bold)
+        }
+        Text(
+            text = "把优选结果提交到 GitHub 仓库，raw 直链可分享/订阅；Token 需该仓库 Contents 写权限",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        OutlinedTextField(
+            value = ghToken,
+            onValueChange = onToken,
+            label = { Text("GitHub Token") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            textStyle = TextStyle(fontSize = 13.sp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = ghOwner,
+                onValueChange = onOwner,
+                label = { Text("属主 owner") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 13.sp),
+            )
+            OutlinedTextField(
+                value = ghRepo,
+                onValueChange = onRepo,
+                label = { Text("仓库 repo") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 13.sp),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = ghBranch,
+                onValueChange = onBranch,
+                label = { Text("分支") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 13.sp),
+            )
+            OutlinedTextField(
+                value = ghPath,
+                onValueChange = onPath,
+                label = { Text("文件路径") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 13.sp),
+            )
+        }
+        OutlinedTextField(
+            value = ghMessage,
+            onValueChange = onMessage,
+            label = { Text("提交信息") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 13.sp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = "保存 Token 到应用私有存储", fontSize = 13.sp)
+            Switch(checked = ghSaveToken, onCheckedChange = onSaveToken)
+        }
+        OutlinedButton(onClick = onSaveConfig, modifier = Modifier.fillMaxWidth()) {
+            Text("保存配置")
+        }
+        Button(
+            onClick = onUpload,
+            enabled = !ghUploading && resultCount > 0 &&
+                ghToken.isNotBlank() && ghOwner.isNotBlank() &&
+                ghRepo.isNotBlank() && ghPath.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (ghUploading) "上传中..." else "上传到 GitHub")
+        }
+        Text(
+            text = ghStatus,
+            fontSize = 12.sp,
+            color = when (ghStatusOk) {
+                true -> MaterialTheme.colorScheme.primary
+                false -> MaterialTheme.colorScheme.error
+                null -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = RoundedCornerShape(8.dp),
+                )
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        )
     }
 }
 
