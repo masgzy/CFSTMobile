@@ -17,6 +17,7 @@ class DcAggregationTest {
         port = 443,
         lossRate = 0.0,
         delayMs = delay,
+        colo = colo,
     )
 
     // ------------------------------------------------------ 聚合
