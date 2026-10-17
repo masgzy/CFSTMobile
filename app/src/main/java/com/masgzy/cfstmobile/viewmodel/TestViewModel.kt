@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.masgzy.cfstmobile.data.CloudflareIpSources
+import com.masgzy.cfstmobile.data.ConfigBackup
 import com.masgzy.cfstmobile.data.DcLocation
 import com.masgzy.cfstmobile.data.DcLocations
 import com.masgzy.cfstmobile.data.DcProbe
@@ -46,6 +47,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -75,12 +78,29 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
 
     private val settingsRepo = SettingsRepository(app)
     private val historyStore = HistoryStore(app)
+    private val configBackup = ConfigBackup(app)
 
     private val _uiState = MutableStateFlow(TestUiState())
     val uiState: StateFlow<TestUiState> = _uiState.asStateFlow()
 
     private val _settings = MutableStateFlow(settingsRepo.load())
     val settings: StateFlow<UiSettings> = _settings.asStateFlow()
+
+    /** 终端日志面板（对齐 CFData-WEB log-box，最新在末尾，上限 200 条） */
+    private val _logs = MutableStateFlow(listOf<String>())
+    val logs: StateFlow<List<String>> = _logs.asStateFlow()
+
+    init {
+        // 自动加载已保存配置（对齐 CFData configAutoLoad=localStorage）
+        if (_settings.value.autoLoadConfig) {
+            configBackup.load()?.let { saved ->
+                _settings.value = saved
+                settingsRepo.save(saved)
+                log("已自动加载保存配置")
+            }
+        }
+        log("等待操作...")
+    }
 
     private val _history = MutableStateFlow(historyStore.load())
     val history: StateFlow<List<HistoryRecord>> = _history.asStateFlow()
@@ -112,6 +132,46 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         settingsRepo.save(next)
     }
 
+    // ------------------------------------------------- 配置快照（💾 保存/加载）
+
+    /** 追加一条终端日志（时间戳前缀，对齐 CFData log-box 样式） */
+    private fun log(message: String) {
+        val ts = SimpleDateFormat("[HH:mm:ss]", Locale.US).format(Date())
+        val next = _logs.value + "$ts $message"
+        _logs.value = if (next.size > MAX_LOG_LINES) next.takeLast(MAX_LOG_LINES) else next
+    }
+
+    fun saveConfigSnapshot() {
+        configBackup.save(_settings.value)
+        log("已保存当前配置")
+    }
+
+    fun loadConfigSnapshot() {
+        val saved = configBackup.load()
+        if (saved == null) {
+            _toast.tryEmit("没有已保存的配置")
+            return
+        }
+        _settings.value = saved
+        settingsRepo.save(saved)
+        log("已加载保存配置")
+    }
+
+    fun deleteConfigSnapshot() {
+        configBackup.delete()
+        log("已删除保存配置")
+    }
+
+    fun hasConfigSnapshot(): Boolean = configBackup.exists()
+
+    /** 恢复全部默认配置（对齐 CFData 设置菜单危险按钮） */
+    fun resetSettings() {
+        val defaults = UiSettings()
+        _settings.value = defaults
+        settingsRepo.save(defaults)
+        log("已恢复全部默认配置")
+    }
+
     // ------------------------------------------------------------ 测速
 
     fun startTest() {
@@ -122,11 +182,22 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             _toast.tryEmit(error)
             return
         }
+        val modeDesc = if (s.ipSource == UiSettings.SOURCE_BUILTIN) {
+            "官方优选 IPv${s.ipType}"
+        } else {
+            "非标优选"
+        }
+        log(
+            "开始扫描：$modeDesc · 端口 ${s.tcpPort} · " +
+                (if (s.pingMode == UiSettings.PING_HTTP) "httping" else "tcping") +
+                (if (s.enableDownload) " · 自动测速" else ""),
+        )
         val configJson = ProtocolJson.json.encodeToString(
             com.masgzy.cfstmobile.model.CfstConfig.serializer(),
             s.toCfstConfig(),
         )
         _uiState.value = TestUiState(isRunning = true, isMock = !CfstFfi.available)
+        stopLogged = false
 
         viewModelScope.launch(Dispatchers.IO) {
             val current = try {
@@ -144,9 +215,23 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 // 250ms 轮询进度，直到 done / error
+                var lastPhase = ""
                 while (isActive) {
                     delay(POLL_INTERVAL_MS)
                     val progress = current.poll()
+                    if (progress.phase != lastPhase) {
+                        when (progress.phase) {
+                            "ping" -> log("阶段：延迟测试")
+                            "download" -> log("阶段：下载测速")
+                            "done" -> log("扫描完成")
+                            "error" -> log("出错：${progress.message ?: "未知错误"}")
+                        }
+                        lastPhase = progress.phase
+                    }
+                    if (progress.stopRequested && !stopLogged) {
+                        log("已请求停止，等待引擎收尾...")
+                        stopLogged = true
+                    }
                     _uiState.update { st ->
                         st.copy(
                             phase = progress.phase,
@@ -180,6 +265,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         val result = current.takeResult()
         if (result != null && result.items.isNotEmpty()) {
             _uiState.update { it.copy(results = result.items) }
+            log("测试完成：${result.items.size} 个结果")
             val s = _settings.value
             val summary = "${s.tcpPort}/${s.pingMode}" + if (s.enableDownload) " · 下载" else " · 仅延迟"
             _history.value = historyStore.add(
@@ -188,6 +274,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             )
         } else if (_uiState.value.phase != "error") {
             _uiState.update { it.copy(message = it.message ?: "测速结束，但没有得到结果") }
+            log("测速结束，没有得到结果")
         }
     }
 
@@ -195,6 +282,9 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     fun stopTest() {
         session?.stop()
     }
+
+    /** 防重复打印停止日志 */
+    private var stopLogged = false
 
     // ------------------------------------------------------ 数据中心二次测试
 
@@ -210,6 +300,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             _toast.tryEmit("暂无测速结果，先完成一次测速")
             return
         }
+        log("数据中心测试：开始识别 ${items.size} 个结果的归属")
         dcJob?.cancel()
         dcJob = viewModelScope.launch(Dispatchers.IO) {
             _dcState.value = DcTestUiState(step = DcStep.PROBING_COLO)
@@ -233,6 +324,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             dcEnriched = enriched
+            log("数据中心聚合完成：${dcList.size} 个 DC")
             _dcState.update { it.copy(step = DcStep.DC_LIST, dcList = dcList, probeTotal = missing.size) }
         }
     }
@@ -282,6 +374,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                     message = null,
                 )
             }
+            log("二次详细测试：${colo ?: "全部 DC"} · ${targets.size} 个 IP")
             val out = mutableListOf<DcTestItem>()
             val mutex = Mutex()
             val done = AtomicInteger(0)
@@ -328,6 +421,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             } else {
+                log("二次详细测试完成：${out.size} 个 IP 通过")
                 _dcState.update { it.copy(step = DcStep.DONE) }
             }
         }
@@ -383,10 +477,12 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                 onSuccess = { lines ->
                     withContext(Dispatchers.Main) {
                         updateSettings { it.copy(ipSource = UiSettings.SOURCE_CUSTOM, customIpText = lines.joinToString("\n")) }
+                        log("已获取 ${lines.size} 个 IP 段（在线）")
                         _toast.tryEmit("已获取 ${lines.size} 个 IP 段，已切换为自定义 IP 来源")
                     }
                 },
                 onFailure = { e ->
+                    log("在线获取 IP 段失败：${e.message ?: "网络错误"}")
                     _toast.tryEmit("获取失败：${e.message ?: "网络错误"}")
                 },
             )
@@ -407,6 +503,9 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         const val POLL_INTERVAL_MS = 250L
         const val SOURCE_CLOUDFLARE = "cloudflare"
         const val SOURCE_GITHUB = "github"
+
+        /** 终端日志面板保留条数上限 */
+        const val MAX_LOG_LINES = 200
 
         /** 数据中心探测/详细测试并发上限（对齐 CFData runBoundedWorkers 50 workers） */
         const val DC_CONCURRENCY = 50
