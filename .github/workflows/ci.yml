@@ -15,6 +15,22 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    name: 探测 app 工程是否存在
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app_present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          if [ -f app/build.gradle.kts ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
   engine:
     name: Rust 引擎（单测 + Android 交叉编译冒烟）
     runs-on: ubuntu-latest
@@ -68,12 +84,13 @@ jobs:
           done
           exit $FAIL
 
-  # App 工程落地后自动启用（当前仓库尚无 app/，此 job 自动跳过）
+  # App 工程落地后自动启用（由 detect job 探测，当前仓库尚无 app/ 自动跳过）
   app:
     name: Android App（存在时）
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: hashFiles('app/build.gradle.kts') != ''
+    needs: detect
+    if: needs.detect.outputs.app_present == 'true'
     steps:
       - uses: actions/checkout@v7
 
