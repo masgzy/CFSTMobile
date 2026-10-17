@@ -1,112 +1,255 @@
 package com.masgzy.cfstmobile.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.masgzy.cfstmobile.model.CfstResultItem
-import com.masgzy.cfstmobile.model.SortMode
-import com.masgzy.cfstmobile.model.sortedByMode
-import com.masgzy.cfstmobile.viewmodel.TestUiState
+import com.masgzy.cfstmobile.data.DcInfo
+import com.masgzy.cfstmobile.data.DcStep
+import com.masgzy.cfstmobile.data.DcTestUiState
+import com.masgzy.cfstmobile.data.ScanRow
+import com.masgzy.cfstmobile.data.UiSettings
+import com.masgzy.cfstmobile.ui.theme.delayColor
+import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
- * 扫描结果卡（对齐 CFData-WEB #scan section-box）：
- * 标题 + 计数徽章 + 绿色操作钮（一键复制/结果操作）+ 排序筛选 + 表格。
- * 行点击复制 ip:port；表格列 IP/端口/数据中心/延迟/丢包/速度。
+ * 扫描结果区（对齐 CFData-WEB #scan tab）：
+ * 数据中心汇总表（dcList 就绪后显示，操作列「选择测试/重新测试/测试中」）+ 扫描结果宽表。
+ * 官方 8 列 = IP/端口/数据中心/落地区域/地区/城市/扫描方式/延迟；
+ * 非标 8 列 = IP地址/端口号/丢包率/扫描方式/网络延迟/下载速度/OriginalInput/数据中心。
  */
 @Composable
 fun ResultsSection(
-    state: TestUiState,
-    sortBy: String,
-    onSortChange: (String) -> Unit,
+    viewModel: TestViewModel,
+    scanRows: List<ScanRow>,
+    dcState: DcTestUiState,
+    official: Boolean,
     onExportClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val sorted = remember(state.results, sortBy) { state.results.sortedByMode(sortBy) }
+    val scanModeLabel =
+        if (viewModel.settings.value.pingMode == UiSettings.PING_HTTP) "HTTPing" else "TCPing"
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        // 标题 + 徽章 + 排序（对齐 section-box h3 + badge + table-filter-select）
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ---------------- 数据中心汇总（对齐 #dcSection：dcList 非空才显示） ----------------
+        if (official && dcState.dcList.isNotEmpty()) {
+            DcSummaryTable(
+                dcList = dcState.dcList,
+                testedDcs = dcState.testedDcs,
+                testingDc = dcState.selectedDc.takeIf { dcState.step == DcStep.TESTING },
+                currentHint = dcState.message,
+                onSelect = { viewModel.testDc(it) },
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+
+        // ---------------- 扫描结果表 ----------------
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("扫描结果", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                CountBadge(sorted.size)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SortChip("综合", sortBy == SortMode.SCORE) { onSortChange(SortMode.SCORE) }
-                Spacer(Modifier.width(4.dp))
-                SortChip("延迟", sortBy == SortMode.DELAY) { onSortChange(SortMode.DELAY) }
-                Spacer(Modifier.width(4.dp))
-                SortChip("速度", sortBy == SortMode.SPEED) { onSortChange(SortMode.SPEED) }
-            }
+            Text("扫描结果", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            CountBadge(scanRows.size)
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // 绿色操作钮（对齐 .export-btn：一键复制 / 结果操作）
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GreenButton(
                 text = "一键复制",
-                enabled = sorted.isNotEmpty(),
+                enabled = scanRows.isNotEmpty(),
                 onClick = {
-                    val text = com.masgzy.cfstmobile.model.ExportFormatter.toTxt(sorted)
-                    copyToClipboard(context, text)
+                    copyToClipboard(context, scanRows.joinToString("\n") { "${it.ip}:${it.port}" })
                 },
+                modifier = Modifier.weight(1f),
             )
             GreenButton(
-                text = "结果操作（导出 / 上传）",
-                enabled = sorted.isNotEmpty(),
+                text = "结果操作",
+                enabled = scanRows.isNotEmpty(),
                 onClick = onExportClick,
+                modifier = Modifier.weight(1f),
             )
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        CfTable(
-            columns = listOf("IP", "端口", "数据中心", "延迟", "丢包", "速度"),
-            rows = sorted.map { item ->
-                listOf(
-                    item.ip,
-                    item.port.toString(),
-                    item.colo ?: "-",
-                    "${fmt0(item.delayMs)}ms",
-                    "${fmt1(item.lossRate * 100)}%",
-                    item.downloadSpeedMbps?.let { "${fmt2(it)}M" } ?: "-",
-                )
-            },
-            onRowClick = { index -> copyToClipboard(context, sorted[index].address()) },
-        )
+        if (official) {
+            ScrollTable(
+                columns = listOf("IP", "端口", "数据中心", "落地区域", "地区", "城市", "扫描方式", "延迟"),
+                columnWidths = listOf(120.dp, 56.dp, 72.dp, 72.dp, 72.dp, 96.dp, 80.dp, 72.dp),
+                rows = scanRows.map { row ->
+                    listOf(
+                        row.ip,
+                        row.port.toString(),
+                        row.colo,
+                        row.country.ifEmpty { "-" },
+                        row.region.ifEmpty { "-" },
+                        row.city.ifEmpty { "-" },
+                        scanModeLabel,
+                        "${fmt0(row.delayMs)}ms",
+                    )
+                },
+                onRowClick = { index ->
+                    copyToClipboard(context, "${scanRows[index].ip}:${scanRows[index].port}")
+                },
+            )
+        } else {
+            ScrollTable(
+                columns = listOf("IP地址", "端口号", "丢包率", "扫描方式", "网络延迟", "下载速度", "OriginalInput", "数据中心"),
+                columnWidths = listOf(120.dp, 56.dp, 64.dp, 80.dp, 80.dp, 80.dp, 150.dp, 72.dp),
+                rows = scanRows.map { row ->
+                    listOf(
+                        row.ip,
+                        row.port.toString(),
+                        "${fmt1(row.lossRate * 100)}%",
+                        scanModeLabel,
+                        "${fmt0(row.delayMs)}ms",
+                        row.speedMbps?.let { "${fmt2(it)}MB/s" } ?: "-",
+                        row.origin ?: "-",
+                        row.colo,
+                    )
+                },
+                onRowClick = { index ->
+                    copyToClipboard(context, "${scanRows[index].ip}:${scanRows[index].port}")
+                },
+            )
+        }
     }
 }
 
+/**
+ * 数据中心汇总表（对齐 #dcTable：数据中心/落地区域/城市/IP数量/最低延迟/操作）。
+ * 操作列按钮三态：测试中...（禁用）/ 重新测试（已测过）/ 选择测试。
+ */
 @Composable
-private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, fontSize = 11.sp, maxLines = 1) },
-        modifier = Modifier.height(30.dp),
-    )
+private fun DcSummaryTable(
+    dcList: List<DcInfo>,
+    testedDcs: Set<String>,
+    testingDc: String?,
+    currentHint: String?,
+    onSelect: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("数据中心汇总", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            CountBadge(dcList.size)
+            Spacer(Modifier.weight(1f))
+            if (testingDc != null) {
+                Text(
+                    text = "测试中: $testingDc",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else if (currentHint != null && testedDcs.isNotEmpty()) {
+                Text(
+                    text = currentHint,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        Row(Modifier.fillMaxWidth()) {
+            listOf("数据中心", "落地区域", "城市", "IP数量", "最低延迟", "操作").forEach {
+                Text(
+                    text = it,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+            }
+        }
+        dcList.forEach { dc ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = dc.colo,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = dc.country.ifEmpty { "-" },
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                Text(
+                    text = dc.city.ifEmpty { "-" },
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                Text(text = dc.ipCount.toString(), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text(
+                    text = "${dc.minLatencyMs}ms",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = delayColor(dc.minLatencyMs.toDouble()),
+                    modifier = Modifier.weight(1f),
+                )
+                Box(modifier = Modifier.weight(1f)) {
+                    val testing = testingDc != null && testingDc.equals(dc.colo, ignoreCase = true)
+                    if (testing) {
+                        Text(
+                            text = "测试中...",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        TextButton(
+                            onClick = { onSelect(dc.colo) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text(
+                                text = if (dc.colo in testedDcs) "重新测试" else "选择测试",
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+        }
+    }
 }
 
-/** 整数毫秒显示（延迟不保留小数，表格更紧凑） */
-private fun fmt0(value: Double): String = if (value == value.toLong().toDouble()) {
+/** 整数毫秒显示 */
+internal fun fmt0(value: Double): String = if (value == value.toLong().toDouble()) {
     value.toLong().toString()
 } else {
     String.format(java.util.Locale.US, "%.0f", value)

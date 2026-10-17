@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -185,8 +186,8 @@ fun ParamsCard(
 }
 
 /**
- * option-item 参数行（对齐 .option-item：左标签 + 右控件，外框圆角 12）。
- * 全部行统一 label 固定 104dp，控件占余宽，与 Web 端 120px 标签列同构。
+ * option-item 参数行（对齐 .option-item：label 在上小字 + 控件在下，白底圆角 10）。
+ * 双列网格时外层传 Modifier.weight(1f)，全宽项直接用默认 fillMaxWidth。
  */
 @Composable
 fun OptionItem(
@@ -194,30 +195,41 @@ fun OptionItem(
     modifier: Modifier = Modifier,
     control: @Composable () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(104.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.width(8.dp))
-        Box(modifier = Modifier.weight(1f)) { control() }
+        Spacer(Modifier.height(4.dp))
+        Box { control() }
     }
 }
 
 /** option-item 之间的标准间距 */
 @Composable
 fun OptionGap() = Spacer(Modifier.height(10.dp))
+
+/** 双列网格行（对齐 CFData .controls 的 option-item 2 列排布） */
+@Composable
+fun OptionGrid(
+    left: @Composable () -> Unit,
+    right: @Composable () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(modifier = Modifier.weight(1f)) { left() }
+        Box(modifier = Modifier.weight(1f)) { right() }
+    }
+}
 
 // ---------------------------------------------------------------- 输入控件
 
@@ -480,7 +492,88 @@ fun LogPanel(lines: List<String>, modifier: Modifier = Modifier) {
     }
 }
 
-// ---------------------------------------------------------------- 结果表格
+// ---------------------------------------------------------------- 宽表格
+
+/**
+ * 宽表格（对齐 CFData scroll-table max-height:520px：横向滚动 + 纵向滚动）。
+ * 每列固定宽度，表头与数据行同构对齐；适合 8~12 列的宽表。
+ */
+@Composable
+fun ScrollTable(
+    columns: List<String>,
+    rows: List<List<String>>,
+    modifier: Modifier = Modifier,
+    columnWidths: List<androidx.compose.ui.unit.Dp> = List(columns.size) { 88.dp },
+    maxHeight: androidx.compose.ui.unit.Dp = 320.dp,
+    onRowClick: ((Int) -> Unit)? = null,
+) {
+    val hScroll = rememberScrollState()
+    val vScroll = rememberScrollState()
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .horizontalScroll(hScroll),
+    ) {
+        Row(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            columns.forEachIndexed { index, col ->
+                Text(
+                    text = col,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(columnWidths[index]),
+                    maxLines = 1,
+                )
+            }
+        }
+        if (rows.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(72.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "暂无结果",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = maxHeight)
+                    .verticalScroll(vScroll),
+            ) {
+                rows.forEachIndexed { index, cells ->
+                    Row(
+                        modifier = Modifier
+                            .clickable(enabled = onRowClick != null) { onRowClick?.invoke(index) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        cells.forEachIndexed { cellIndex, cell ->
+                            Text(
+                                text = cell,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.width(columnWidths[cellIndex]),
+                            )
+                        }
+                    }
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * 结果表格（对齐 scroll-table：横向滚动 + 表头行）。

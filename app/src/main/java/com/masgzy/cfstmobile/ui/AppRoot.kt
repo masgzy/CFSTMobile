@@ -49,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,13 +65,13 @@ import com.masgzy.cfstmobile.ui.components.ResultsSection
 import com.masgzy.cfstmobile.ui.components.StatusBanner
 import com.masgzy.cfstmobile.ui.dialogs.ExportDialog
 import com.masgzy.cfstmobile.ui.dialogs.HistoryDialog
-import com.masgzy.cfstmobile.viewmodel.TestUiState
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
  * 应用根（对齐 CFData-WEB 单页布局，Material You 取色）：
- * 标题+右上操作（GitHub/配置/设置下拉菜单）→ 状态横幅 → 模式切换（官方/非标优选）→
- * 参数卡 → 开始按钮 → 进度条 → 扫描结果/详细测试双 Tab → 终端日志面板。
+ * 标题（CFSTMobile + 版本号副行）+ 右上操作（GitHub/配置/设置下拉菜单）→ 状态横幅 →
+ * 模式切换（官方/非标优选）→ 参数卡 → 开始按钮 → 进度条 → 结果区（官方双 Tab：扫描/详细测试）→ 终端日志。
+ * 非标模式隐藏详细测试 Tab（对齐 CFData switchMode 的 testTab display:none）。
  */
 @Composable
 fun AppRoot(viewModel: TestViewModel) {
@@ -80,15 +79,22 @@ fun AppRoot(viewModel: TestViewModel) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val dcState by viewModel.dcState.collectAsStateWithLifecycle()
+    val scanRows by viewModel.scanRows.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showExport by remember { mutableStateOf(false) }
     var scanTab by rememberSaveable { mutableStateOf(true) }
+    val official = settings.ipSource == UiSettings.SOURCE_BUILTIN
 
     LaunchedEffect(viewModel) {
         viewModel.toast.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // 官方模式：数据中心详细测试开始后自动切到详细测试 Tab（对齐 CFData selectDC 的 switchTab('test')）
+    LaunchedEffect(dcState.step, official) {
+        if (official && dcState.step == com.masgzy.cfstmobile.data.DcStep.TESTING) scanTab = false
     }
 
     Scaffold { padding ->
@@ -97,10 +103,10 @@ fun AppRoot(viewModel: TestViewModel) {
                 .fillMaxSize()
                 .padding(padding)
                 .statusBarsPadding(),
-            contentPadding = PaddingValues(14.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // ---------------- 标题 + 右上操作（对齐 h1 + top-actions） ----------------
+            // ---------------- 标题 + 右上操作（同一行：左标题块 / 右图标排） ----------------
             item(key = "header") {
                 Header(viewModel = viewModel, settings = settings)
             }
@@ -119,9 +125,9 @@ fun AppRoot(viewModel: TestViewModel) {
                 ModeSwitch(
                     leftLabel = "官方优选",
                     rightLabel = "非标优选",
-                    leftSelected = settings.ipSource == UiSettings.SOURCE_BUILTIN,
-                    onLeft = { viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_BUILTIN) } },
-                    onRight = { viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_CUSTOM) } },
+                    leftSelected = official,
+                    onLeft = { scanTab = true; viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_BUILTIN) } },
+                    onRight = { scanTab = true; viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_CUSTOM) } },
                 )
             }
 
@@ -129,9 +135,8 @@ fun AppRoot(viewModel: TestViewModel) {
             item(key = "params") {
                 ParamsSection(
                     settings = settings,
-                    official = settings.ipSource == UiSettings.SOURCE_BUILTIN,
+                    official = official,
                     onUpdate = viewModel::updateSettings,
-                    onFetchIpList = viewModel::fetchIpList,
                 )
             }
 
@@ -156,31 +161,36 @@ fun AppRoot(viewModel: TestViewModel) {
                 item(key = "progress") { ProgressBarLine(uiState) }
             }
 
-            // ---------------- 结果双 Tab（对齐 .tabs） ----------------
-            item(key = "tabs") {
-                CfTabs(
-                    leftLabel = "扫描结果",
-                    rightLabel = "详细测试",
-                    leftSelected = scanTab,
-                    onLeft = { scanTab = true },
-                    onRight = { scanTab = false },
-                )
-            }
-            if (scanTab) {
-                item(key = "scan") {
-                    ResultsSection(
-                        state = uiState,
-                        sortBy = settings.sortBy,
-                        onSortChange = { mode -> viewModel.updateSettings { it.copy(sortBy = mode) } },
-                        onExportClick = { showExport = true },
+            // ---------------- 结果区（官方双 Tab；非标只有扫描结果） ----------------
+            if (official) {
+                item(key = "tabs") {
+                    CfTabs(
+                        leftLabel = "扫描结果",
+                        rightLabel = "详细测试",
+                        leftSelected = scanTab,
+                        onLeft = { scanTab = true },
+                        onRight = { scanTab = false },
                     )
                 }
-            } else {
+            }
+            if (official && !scanTab) {
                 item(key = "dc") {
                     DcTestSection(
                         viewModel = viewModel,
                         state = dcState,
                         hasResults = uiState.results.isNotEmpty(),
+                        speedMinMbps = settings.officialSpeedMin,
+                        onExportClick = { showExport = true },
+                    )
+                }
+            } else {
+                item(key = "scan") {
+                    ResultsSection(
+                        viewModel = viewModel,
+                        scanRows = scanRows,
+                        dcState = dcState,
+                        official = official,
+                        onExportClick = { showExport = true },
                     )
                 }
             }
@@ -197,6 +207,7 @@ fun AppRoot(viewModel: TestViewModel) {
 
 // ---------------------------------------------------------------- 头部
 
+/** 标题行（对齐 .logo-area + .top-actions 同行布局）：左标题块，右图标排，无额外顶距 */
 @Composable
 private fun Header(viewModel: TestViewModel, settings: UiSettings) {
     var showSettingsMenu by remember { mutableStateOf(false) }
@@ -204,29 +215,24 @@ private fun Header(viewModel: TestViewModel, settings: UiSettings) {
     var showHistory by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        // 标题块（对齐 h1 + version-line，顶部给右上操作留 44dp）
-        Column(modifier = Modifier.fillMaxWidth().padding(top = 44.dp)) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Cloudflare IP Data",
+                text = "CFSTMobile",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = "CFSTMobile v${BuildConfig.VERSION_NAME}",
+                text = "v${BuildConfig.VERSION_NAME}",
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
-        // 右上操作排（对齐 .top-actions：GitHub / 💾 配置 / ⚙️ 设置）
-        Row(
-            modifier = Modifier.align(Alignment.TopEnd),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             IconButton(onClick = {
                 runCatching {
                     context.startActivity(
