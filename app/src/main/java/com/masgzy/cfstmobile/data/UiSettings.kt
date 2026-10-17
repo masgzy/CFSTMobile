@@ -35,50 +35,85 @@ object SpeedUrlPresets {
     }
 }
 
-/** UI 层设置（持久化为 JSON；新增字段靠 kotlinx-serialization 默认值向后兼容） */
+/**
+ * UI 层设置（持久化为 JSON；新增字段靠 kotlinx-serialization 默认值向后兼容）。
+ *
+ * 参数按官方/非标分成两组（对齐 CFData-WEB config.official / config.nsb 独立持久化语义）：
+ * 两组各自的 并发/合格延迟/合格速度/结果数量/自动测速/数据中心 互不影响；
+ * 扫描方式、测速网址、高级参数为共用项。
+ */
 @Serializable
 data class UiSettings(
-    /** IP 来源：内置段（官方优选）/ 自定义目标列表（非标优选） */
+    /** IP 来源：内置段（官方优选）/ 自定义目标（非标优选） */
     val ipSource: String = SOURCE_BUILTIN,
     /** 官方优选 IP 类型："4" / "6"（决定内置段用 v4 选择集还是官方 v6 全集） */
     val ipType: String = IP_V4,
+    /** 官方 v4 段选择集（高级参数内维护，默认官方全集） */
     val selectedSegments: List<String> = BUILT_IN_IPS,
+
+    // ---------------- 非标输入源（文件 / URL 二选一，手动列表为 App 补充） ----------------
+    /** 手动目标列表（每行一个：CIDR / IP[:端口] / 域名[:端口]） */
     val customIpText: String = "",
-    /** 测速端口（引擎默认 443；非标模式兼作未指定端口条目的备用端口） */
-    val tcpPort: Int = 443,
+    /** 网络 URL（启动时拉取 IP 列表，对齐 CFData nsbSourceUrl） */
+    val nsbSourceUrl: String = "",
+    /** 已选本地文件的展示名（内容读入 customIpText 追加区） */
+    val nsbFileName: String = "",
+    /** 本地文件内容（选择文件后写入，与手动列表合并下发） */
+    val nsbFileText: String = "",
+
+    // ---------------- 官方参数组（对齐 CFData config.official 默认值） ----------------
+    val officialPort: Int = 443,
+    val officialThreads: Int = 100,
+    /** 扫描合格延迟（官方默认 500ms） */
+    val officialDelayMs: Int = 500,
+    val officialSpeedMin: Double = 0.1,
+    /** 测速结果数量，0 = 关闭测速 */
+    val officialSpeedLimit: Int = 5,
+    /** 自动测速：扫描完成后自动选数据中心做二次详细测试 */
+    val officialAutoSpeed: Boolean = false,
+    /** 自动测速目标数据中心（留空选最低延迟 DC；仅自动测速开启时可用） */
+    val officialTargetDc: String = "",
+
+    // ---------------- 非标参数组（对齐 CFData config.nsb 默认值） ----------------
+    /** 备用端口：条目未带端口时使用（TLS 关闭默认 80） */
+    val nsbFallbackPort: Int = 443,
+    val nsbThreads: Int = 100,
+    /** 扫描合格延迟（非标默认 0 = 不过滤） */
+    val nsbDelayMs: Int = 0,
+    /** 扫描合格数量（延迟测试通过的结果上限） */
+    val nsbResultLimit: Int = 1000,
+    val nsbSpeedMin: Double = 0.1,
+    /** 测速结果数量，0 = 关闭测速 */
+    val nsbSpeedLimit: Int = 5,
+    /** 自动测速（非标默认关闭） */
+    val nsbAutoSpeed: Boolean = false,
+    /** 数据中心筛选（留空不限制，如 NRT） */
+    val nsbTargetDc: String = "",
+    /** TLS 模式（关闭时备用端口默认 80） */
+    val nsbTls: Boolean = true,
+    /** 输出文件名（CSV 导出默认文件名） */
+    val nsbOutFile: String = "ip.csv",
+
+    // ---------------- 共用参数 ----------------
     /** 延迟测速方式：tcp / http（icmp 需 root，普通 App 不暴露） */
     val pingMode: String = PING_TCP,
-    /** ping_mode=http 的探测地址；空 = 引擎默认 cp.cloudflare.com trace */
+    /** ping_mode=http 的探测地址；空 = 引擎默认 */
     val httpingUrl: String = "",
-    /** httping 模式数据中心筛选（引擎 httping_colo，逗号分隔多个，如 NRT,HKG） */
-    val targetDc: String = "",
-    /** 是否做下载测速（false = 仅测延迟；对应 CFData「自动测速」开关） */
-    val enableDownload: Boolean = true,
     /** 测速网址预设（auto/cloudflare/cm/mobile/custom） */
     val speedUrlPreset: String = SpeedUrlPresets.AUTO,
     val downloadUrl: String = DEFAULT_DOWNLOAD_URL,
     /** 单 IP 下载测速时长（秒） */
     val downloadTimeSecs: Int = 10,
-    /** 需要达标的结果数量（CFData「测速结果数量」） */
-    val testCount: Int = 10,
     /** 结果保留数量上限 */
-    val printNum: Int = 10,
+    val printNum: Int = 20,
     /** 每 IP 延迟测速次数 */
     val pingTimes: Int = 4,
-    /** 并发上限（CFData 默认 100） */
-    val maxThreads: Int = 100,
-    /** 延迟上限（ms），超出者淘汰 */
-    val maxDelayMs: Int = 2000,
     /** 丢包率上限（0.0 ~ 1.0） */
     val maxLossRate: Double = 1.0,
-    /** 达标速度下限（MB/s），0 = 不限 */
-    val minSpeedMbps: Double = 0.0,
     /** 全局超时（秒），0 = 不限 */
     val globalTimeoutSecs: Int = 0,
     /** 测试 CIDR 全部 IPv4（否则按前缀采样） */
     val testAllIpv4: Boolean = false,
-    /** GitHub 镜像前缀（仅用于拉取 IP 段列表） */
-    val mirrorUrl: String = "",
     /** 结果排序：score / delay / speed */
     val sortBy: String = SortMode.SCORE,
     /** 主题模式：auto / light / dark（对齐 CFData 设置菜单颜色模式） */
@@ -88,43 +123,77 @@ data class UiSettings(
     /** 启动时自动加载已保存配置 */
     val autoLoadConfig: Boolean = false,
 ) {
+    val official: Boolean get() = ipSource == SOURCE_BUILTIN
+
     /** 官方模式实际使用的内置段（v4 用选择集，v6 用官方全集） */
     val effectiveSegments: List<String>
         get() = if (ipType == IP_V6) BUILT_IN_IPS_V6 else selectedSegments
 
-    /** 组装引擎配置载荷（未填字段交给引擎默认值/校验） */
-    fun toCfstConfig(): CfstConfig = CfstConfig(
-        ipText = if (ipSource == SOURCE_BUILTIN) {
+    /** 当前模式是否做下载测速（测速结果数量 > 0 且官方/非标的自动测速开关放行） */
+    val downloadEnabled: Boolean
+        get() = if (official) officialSpeedLimit > 0 else nsbAutoSpeed && nsbSpeedLimit > 0
+
+    /** 当前模式的测速结果数量 */
+    val speedLimit: Int get() = if (official) officialSpeedLimit else nsbSpeedLimit
+
+    /** 当前模式的合格速度下限 */
+    val speedMin: Double get() = if (official) officialSpeedMin else nsbSpeedMin
+
+    /** 当前模式的并发数量 */
+    val threads: Int get() = if (official) officialThreads else nsbThreads
+
+    /** 当前模式的扫描合格延迟 */
+    val delayMs: Int get() = if (official) officialDelayMs else nsbDelayMs
+
+    /** 非标目标列表（文件内容 + 手动列表合并，跳过空行与注释行） */
+    val nsbTargets: List<String>
+        get() = (nsbFileText.lines() + customIpText.lines())
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+
+    /** 当前模式的引擎端口（官方=测试端口，非标=备用端口） */
+    val enginePort: Int get() = if (official) officialPort else nsbFallbackPort
+
+    /**
+     * 组装引擎配置载荷（未填字段交给引擎默认值/校验）。
+     * [extraTargets]：非标模式从网络 URL 实时拉取的目标行（与文件/手动列表合并）。
+     */
+    fun toCfstConfig(extraTargets: List<String> = emptyList()): CfstConfig = CfstConfig(
+        ipText = if (official) {
             effectiveSegments.joinToString(",")
         } else {
-            customIpText.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(",")
+            (nsbTargets + extraTargets).joinToString(",")
         },
-        tcpPort = tcpPort,
+        tcpPort = enginePort,
         pingMode = pingMode,
         httpingUrl = httpingUrl.trim().ifBlank { null },
-        httpingColo = targetDc.trim(),
-        url = if (enableDownload) downloadUrl.trim() else "",
-        disableDownload = !enableDownload,
+        httpingColo = if (official) "" else nsbTargetDc.trim(),
+        url = if (downloadEnabled) SpeedUrlPresets.resolve(speedUrlPreset, downloadUrl) else "",
+        disableDownload = !downloadEnabled,
         downloadTime = downloadTimeSecs,
-        testCount = testCount,
+        testCount = speedLimit,
+        targetNum = if (official) null else nsbResultLimit,
         printNum = printNum,
         pingTimes = pingTimes,
-        maxThreads = maxThreads,
-        maxDelayMs = maxDelayMs,
+        maxThreads = threads,
+        maxDelayMs = delayMs,
         maxLossRate = maxLossRate.toFloat(),
-        minSpeedMbS = minSpeedMbps.toFloat(),
+        minSpeedMbS = speedMin.toFloat(),
         globalTimeoutSecs = if (globalTimeoutSecs > 0) globalTimeoutSecs else null,
         testAllIpv4 = testAllIpv4,
     )
 
     /** 启动前的轻校验（引擎侧还有完整校验与钳制） */
     fun validate(): String? = when {
-        tcpPort !in 1..65535 -> "测速端口必须在 1~65535 之间"
-        ipSource == SOURCE_BUILTIN && ipType == IP_V4 && selectedSegments.isEmpty() ->
-            "请至少选择一个内置 IP 段"
-        ipSource == SOURCE_CUSTOM && customIpText.isBlank() ->
-            "自定义目标为空（每行一个：CIDR、IP[:端口]、域名[:端口]）"
-        enableDownload && downloadUrl.isBlank() -> "启用自动测速时必须填写测速网址"
+        enginePort !in 1..65535 ->
+            if (official) "测试端口必须在 1~65535 之间" else "备用端口必须在 1~65535 之间"
+        official && ipType == IP_V4 && selectedSegments.isEmpty() -> "请至少选择一个内置 IP 段"
+        !official && nsbSourceUrl.isNotBlank() && nsbFileText.isNotBlank() ->
+            "IP 文件与网络 URL 请二选一（对齐 CFData 输入约束）"
+        !official && nsbSourceUrl.isBlank() && nsbFileText.isBlank() && customIpText.isBlank() ->
+            "请提供扫描目标：选择文件 / 填写网络 URL / 手动输入列表"
+        downloadEnabled && SpeedUrlPresets.resolve(speedUrlPreset, downloadUrl).isBlank() ->
+            "启用自动测速时必须填写测速网址"
         else -> null
     }
 
