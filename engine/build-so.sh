@@ -51,7 +51,11 @@ ABIS=(arm64-v8a armeabi-v7a x86_64)
 mkdir -p "$OUTPUT_DIR"
 
 # ---- 编译（release + 16KB 对齐）----
-cargo ndk -o "$OUTPUT_DIR" --platform 24 build --release
+# 注意：必须显式 -t 列全三 ABI。实测 cargo-ndk 不带 -t 时按环境自动取舍，
+# 在 CI 上只构建了 arm64/armv7 而跳过 x86_64，导致产物校验失败。
+cargo ndk -o "$OUTPUT_DIR" \
+  -t arm64-v8a -t armeabi-v7a -t x86_64 \
+  --platform 24 build --release
 
 echo
 echo "✅ 生成完成:"
