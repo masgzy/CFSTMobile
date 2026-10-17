@@ -2,6 +2,7 @@ package com.masgzy.cfstmobile.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -200,11 +203,11 @@ private fun NonStdParams(
             IconButton(onClick = { showMirrorMenu = true }, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Filled.ExpandMore, contentDescription = "选择镜像", modifier = Modifier.size(18.dp))
             }
-            androidx.compose.material3.DropdownMenu(
+            DropdownMenu(
                 expanded = showMirrorMenu,
                 onDismissRequest = { showMirrorMenu = false },
             ) {
-                androidx.compose.material3.DropdownMenuItem(
+                DropdownMenuItem(
                     text = { Text("不使用镜像") },
                     onClick = {
                         onUpdate { it.copy(mirrorUrl = "") }
@@ -212,7 +215,7 @@ private fun NonStdParams(
                     },
                 )
                 com.masgzy.cfstmobile.data.CloudflareIpSources.MIRROR_PRESETS.forEach { preset ->
-                    androidx.compose.material3.DropdownMenuItem(
+                    DropdownMenuItem(
                         text = { Text(preset, fontSize = 12.sp, maxLines = 1) },
                         onClick = {
                             onUpdate { it.copy(mirrorUrl = preset) }
