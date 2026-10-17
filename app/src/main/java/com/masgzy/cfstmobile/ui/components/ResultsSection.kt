@@ -114,11 +114,23 @@ fun ResultsSection(
                 },
             )
         } else {
+            // 精简/完整表格视图（对齐 CFData nsbCompactView，默认精简）
+            // 精简 = 8 列（对齐 CFData NSB_COMPACT_HEADERS 中我们有数据的子集）；
+            // 完整 = 8 列 + 源IP位置/地区/城市（聚合补齐后可用）
+            val compactView = viewModel.settings.value.nsbCompactView
+            val columns = buildList {
+                addAll(listOf("IP地址", "端口号", "丢包率", "扫描方式", "网络延迟", "下载速度", "OriginalInput", "数据中心"))
+                if (!compactView) addAll(listOf("源IP位置", "地区", "城市"))
+            }
+            val widths = buildList {
+                addAll(listOf(120.dp, 56.dp, 64.dp, 80.dp, 80.dp, 80.dp, 150.dp, 72.dp))
+                if (!compactView) addAll(listOf(88.dp, 88.dp, 96.dp))
+            }
             ScrollTable(
-                columns = listOf("IP地址", "端口号", "丢包率", "扫描方式", "网络延迟", "下载速度", "OriginalInput", "数据中心"),
-                columnWidths = listOf(120.dp, 56.dp, 64.dp, 80.dp, 80.dp, 80.dp, 150.dp, 72.dp),
+                columns = columns,
+                columnWidths = widths,
                 rows = scanRows.map { row ->
-                    listOf(
+                    val base = listOf(
                         row.ip,
                         row.port.toString(),
                         "${fmt1(row.lossRate * 100)}%",
@@ -127,6 +139,11 @@ fun ResultsSection(
                         row.speedMbps?.let { "${fmt2(it)}MB/s" } ?: "-",
                         row.origin ?: "-",
                         row.colo,
+                    )
+                    if (compactView) base else base + listOf(
+                        row.country.ifEmpty { "-" },
+                        row.region.ifEmpty { "-" },
+                        row.city.ifEmpty { "-" },
                     )
                 },
                 onRowClick = { index ->

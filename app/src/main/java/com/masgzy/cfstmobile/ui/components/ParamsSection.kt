@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -41,6 +42,7 @@ import com.masgzy.cfstmobile.data.BUILT_IN_IPS_V6
 import com.masgzy.cfstmobile.data.SpeedUrlPresets
 import com.masgzy.cfstmobile.data.UiSettings
 import com.masgzy.cfstmobile.ui.dialogs.SegmentsDialog
+import com.masgzy.cfstmobile.viewmodel.CompactUiState
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
@@ -63,6 +65,10 @@ fun ParamsSection(
     settings: UiSettings,
     official: Boolean,
     onUpdate: (((UiSettings) -> UiSettings)) -> Unit,
+    compactState: CompactUiState,
+    onStartCompact: () -> Unit,
+    onStopCompact: () -> Unit,
+    onDeleteCompact: () -> Unit,
 ) {
     ParamsCard(
         title = if (official) "官方参数" else "非标参数",
@@ -73,7 +79,7 @@ fun ParamsSection(
         },
     ) {
         if (official) {
-            OfficialParams(settings, onUpdate)
+            OfficialParams(settings, onUpdate, compactState, onStartCompact, onStopCompact, onDeleteCompact)
         } else {
             NonStdParams(settings, onUpdate)
         }
@@ -88,6 +94,10 @@ fun ParamsSection(
 private fun OfficialParams(
     settings: UiSettings,
     onUpdate: (((UiSettings) -> UiSettings)) -> Unit,
+    compactState: CompactUiState,
+    onStartCompact: () -> Unit,
+    onStopCompact: () -> Unit,
+    onDeleteCompact: () -> Unit,
 ) {
     OptionGrid(
         left = {
@@ -177,6 +187,115 @@ private fun OfficialParams(
             }
         },
     )
+    OptionGap()
+
+    // 精简地址库（对齐 CFData compactipv4，仅官方 IPv4）
+    if (settings.ipType == UiSettings.IP_V4) {
+        CompactSection(
+            settings = settings,
+            compactState = compactState,
+            onStart = onStartCompact,
+            onStop = onStopCompact,
+            onDelete = onDeleteCompact,
+            onUpdate = onUpdate,
+        )
+        OptionGap()
+    }
+
+    // 自动上传（对齐 CFData officialAutoUploadAccount）
+    OptionItem(label = "⬆ 自动上传") {
+        CfDropdown(
+            label = null,
+            selected = autoUploadLabel(settings.officialAutoUpload),
+            options = autoUploadOptions(),
+            onSelect = { o -> onUpdate { it.copy(officialAutoUpload = o.value) } },
+        )
+    }
+}
+
+/** 自动上传账户选项（对齐 CFData：不上传 / GitHub-TXT / GitHub-CSV） */
+private fun autoUploadOptions(): List<CfOption> = listOf(
+    CfOption("不上传", UiSettings.UPLOAD_OFF),
+    CfOption("GitHub 账户（TXT）", UiSettings.UPLOAD_GITHUB_TXT),
+    CfOption("GitHub 账户（CSV）", UiSettings.UPLOAD_GITHUB_CSV),
+)
+
+private fun autoUploadLabel(value: String): String = when (value) {
+    UiSettings.UPLOAD_GITHUB_TXT -> "GitHub 账户（TXT）"
+    UiSettings.UPLOAD_GITHUB_CSV -> "GitHub 账户（CSV）"
+    else -> "不上传"
+}
+
+/**
+ * 精简地址库区（对齐 CFData「按 /24 子网探测 TCP:80 连通性，仅保留活跃子网并覆盖 ips-v4.txt」）。
+ * 含：开始/停止按钮、运行进度、本地库开关与删除。
+ */
+@Composable
+private fun CompactSection(
+    settings: UiSettings,
+    compactState: CompactUiState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onDelete: () -> Unit,
+    onUpdate: (((UiSettings) -> UiSettings)) -> Unit,
+) {
+    OptionItem(label = "🧹 精简地址库") {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (compactState.libCount > 0) {
+                        "本地精简库：${compactState.libCount} 个 /24 子网"
+                    } else {
+                        "按 /24 子网探测 TCP:80，仅保留活跃子网"
+                    },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (compactState.libCount > 0) {
+                    TextButton(onClick = onDelete) { Text("删除") }
+                }
+                if (compactState.running) {
+                    TextButton(onClick = onStop) { Text("停止") }
+                } else {
+                    TextButton(onClick = onStart) { Text("开始精简") }
+                }
+            }
+            if (compactState.running) {
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { compactState.percent.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = compactState.status.ifEmpty { "精简准备中" } +
+                        " · 第 ${compactState.pass} 轮 · 已保留 ${compactState.found} 个子网" +
+                        (if (compactState.stopRequested) " · 正在停止…" else ""),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (compactState.phase == "error" && compactState.message != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = compactState.message.orEmpty(),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (compactState.libCount > 0 || settings.officialUseCompactLib) {
+                Spacer(Modifier.height(2.dp))
+                SwitchItem(
+                    label = "使用精简地址库",
+                    hint = "官方扫描改用本地精简库（引擎直读文件）",
+                    checked = settings.officialUseCompactLib,
+                    onChecked = { checked -> onUpdate { it.copy(officialUseCompactLib = checked) } },
+                )
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- 非标参数
@@ -309,11 +428,34 @@ private fun NonStdParams(
             }
         },
         right = {
+            // 测速并发（对齐 CFData nsbSpeedTest：同时测速的 IP 数量，1 最准）
+            OptionItem(label = "⚡ 测速并发") {
+                IntControl(value = settings.nsbSpeedThreads, placeholder = "1 最准，0 不测速") { v ->
+                    onUpdate { it.copy(nsbSpeedThreads = v) }
+                }
+            }
+        },
+    )
+    OptionGap()
+
+    OptionGrid(
+        left = {
             OptionItem(label = "🏢 数据中心") {
                 CfTextField(
                     value = settings.nsbTargetDc,
                     onValueChange = { v -> onUpdate { it.copy(nsbTargetDc = v) } },
                     placeholder = "留空不限制，如 NRT",
+                )
+            }
+        },
+        right = {
+            // 精简表格（对齐 CFData nsbCompactView，默认精简）
+            OptionItem(label = "🧾 表格视图") {
+                CfDropdown(
+                    label = null,
+                    selected = if (settings.nsbCompactView) "精简表格" else "完整表格",
+                    options = listOf(CfOption("精简表格", "compact"), CfOption("完整表格", "full")),
+                    onSelect = { o -> onUpdate { it.copy(nsbCompactView = o.value == "compact") } },
                 )
             }
         },
@@ -354,6 +496,17 @@ private fun NonStdParams(
             }
         },
     )
+    OptionGap()
+
+    // 自动上传（对齐 CFData nsbAutoUploadAccount）
+    OptionItem(label = "⬆ 自动上传") {
+        CfDropdown(
+            label = null,
+            selected = autoUploadLabel(settings.nsbAutoUpload),
+            options = autoUploadOptions(),
+            onSelect = { o -> onUpdate { it.copy(nsbAutoUpload = o.value) } },
+        )
+    }
 }
 
 // ---------------------------------------------------------------- 共用参数

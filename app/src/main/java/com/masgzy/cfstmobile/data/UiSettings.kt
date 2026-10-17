@@ -73,6 +73,10 @@ data class UiSettings(
     val officialAutoSpeed: Boolean = false,
     /** 自动测速目标数据中心（留空选最低延迟 DC；仅自动测速开启时可用） */
     val officialTargetDc: String = "",
+    /** 自动测速完成后自动上传结果账户（off / github-txt / github-csv，对齐 CFData officialAutoUploadAccount） */
+    val officialAutoUpload: String = UPLOAD_OFF,
+    /** 官方扫描使用本地精简地址库（filesDir/ips-v4.txt，由「精简地址库」生成） */
+    val officialUseCompactLib: Boolean = false,
 
     // ---------------- 非标参数组（对齐 CFData config.nsb 默认值） ----------------
     /** 备用端口：条目未带端口时使用（TLS 关闭默认 80） */
@@ -93,6 +97,12 @@ data class UiSettings(
     val nsbTls: Boolean = true,
     /** 输出文件名（CSV 导出默认文件名） */
     val nsbOutFile: String = "ip.csv",
+    /** 测速并发：同时下载测速的 IP 数量，0 = 不测速；1 结果最准（对齐 CFData nsbSpeedTest） */
+    val nsbSpeedThreads: Int = 4,
+    /** 自动测速完成后自动上传结果账户（off / github-txt / github-csv，对齐 CFData nsbAutoUploadAccount） */
+    val nsbAutoUpload: String = UPLOAD_OFF,
+    /** 非标结果表格精简/完整列切换（对齐 CFData nsbCompactView，默认精简） */
+    val nsbCompactView: Boolean = true,
 
     // ---------------- 共用参数 ----------------
     /** 延迟测速方式：tcp / http（icmp 需 root，普通 App 不暴露） */
@@ -129,9 +139,14 @@ data class UiSettings(
     val effectiveSegments: List<String>
         get() = if (ipType == IP_V6) BUILT_IN_IPS_V6 else selectedSegments
 
-    /** 当前模式是否做下载测速（测速结果数量 > 0 且官方/非标的自动测速开关放行） */
+    /** 当前模式是否做下载测速（测速结果数量 > 0 且自动测速开关放行；非标还要求测速并发 > 0，
+     *  对齐 CFData「需测速并发与测速结果数量均大于 0」） */
     val downloadEnabled: Boolean
-        get() = if (official) officialSpeedLimit > 0 else nsbAutoSpeed && nsbSpeedLimit > 0
+        get() = if (official) officialSpeedLimit > 0 else nsbAutoSpeed && nsbSpeedLimit > 0 && nsbSpeedThreads > 0
+
+    /** 当前模式的测速并发（官方串行 1 = 上游默认最准；非标用用户设置值，0 视为 1 由 downloadEnabled 门控） */
+    val speedThreads: Int
+        get() = if (official) 1 else nsbSpeedThreads.coerceIn(1, 64)
 
     /** 当前模式的测速结果数量 */
     val speedLimit: Int get() = if (official) officialSpeedLimit else nsbSpeedLimit
@@ -176,6 +191,7 @@ data class UiSettings(
         printNum = printNum,
         pingTimes = pingTimes,
         maxThreads = threads,
+        speedThreads = speedThreads,
         maxDelayMs = delayMs,
         maxLossRate = maxLossRate.toFloat(),
         minSpeedMbS = speedMin.toFloat(),
@@ -207,6 +223,13 @@ data class UiSettings(
         const val THEME_AUTO = "auto"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
+
+        /** 自动上传账户：不上传 */
+        const val UPLOAD_OFF = "off"
+        /** 自动上传账户：GitHub 账户，TXT 格式 */
+        const val UPLOAD_GITHUB_TXT = "github-txt"
+        /** 自动上传账户：GitHub 账户，CSV 格式 */
+        const val UPLOAD_GITHUB_CSV = "github-csv"
 
         /** 引擎 README 验证过的官方大流量下载地址（200MB） */
         const val DEFAULT_DOWNLOAD_URL = "https://speed.cloudflare.com/__down?bytes=200000000"

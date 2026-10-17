@@ -15,6 +15,7 @@ use std::ffi::{c_char, CStr, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 
+use crate::compact::{CompactSession, COMPACT_ERROR};
 use crate::engine::{panic_message, Engine, PHASE_ERROR};
 
 /// 当前 ABI 版本
@@ -141,4 +142,94 @@ pub extern "C" fn cfst_string_free(s: *mut c_char) {
     }
     // SAFETY: 指针来自本库 into_raw 且此前未释放（FFI 契约）
     drop(unsafe { CString::from_raw(s) });
+}
+
+// ------------------------------------------------------------ compact（地址库精简）
+
+/// 创建精简会话。config_json 为 UTF-8 JSON（compact.rs 的 CompactConfig）；
+/// 失败返回 NULL 并写 err_out。
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_create(
+    config_json: *const c_char,
+    err_out: *mut c_char,
+    err_cap: i32,
+) -> *mut CompactSession {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        if config_json.is_null() {
+            return Err("config_json 为空".to_string());
+        }
+        // SAFETY: config_json 非空，指向 NUL 结尾的 UTF-8 C 字符串（FFI 契约）
+        let cstr = unsafe { CStr::from_ptr(config_json) };
+        CompactSession::create(&cstr.to_string_lossy())
+    }));
+
+    match result {
+        Ok(Ok(session)) => Box::into_raw(Box::new(session)),
+        Ok(Err(e)) => {
+            write_err(err_out, err_cap, &e);
+            ptr::null_mut()
+        }
+        Err(panic) => {
+            write_err(err_out, err_cap, &format!("create panic: {}", panic_message(&panic)));
+            ptr::null_mut()
+        }
+    }
+}
+
+/// 启动精简。仅 idle 会话可启动；已在运行/已完成返回 false。
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_start(session: *mut CompactSession) -> bool {
+    with_session(session, |s| s.start()).unwrap_or(false)
+}
+
+/// 当前阶段（0=idle 1=running 2=done 3=error；空指针按 error 处理）
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_phase(session: *mut CompactSession) -> u32 {
+    with_session(session, |s| s.phase()).unwrap_or(COMPACT_ERROR)
+}
+
+/// 请求停止（协作式，立即返回；已保留子网仍可经 take_result 获取）
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_stop(session: *mut CompactSession) {
+    let _ = with_session(session, |s| s.stop());
+}
+
+/// 轮询进度快照（JSON，含 pass/current/total/found/percent/status/logs）。
+/// 返回值由调用方 cfst_string_free 释放。
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_poll(session: *mut CompactSession) -> *mut c_char {
+    with_session(session, |s| s.progress_json())
+        .and_then(|s| CString::new(s).ok())
+        .map(|s| s.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+/// 取走精简结果（一次性）：done 阶段首次调用返回 {count, content, file} JSON。
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_take_result(session: *mut CompactSession) -> *mut c_char {
+    with_session(session, |s| s.result_json())
+        .and_then(|one_shot| one_shot.and_then(|s| CString::new(s).ok()))
+        .map(|s| s.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+/// 销毁精简会话：请求停止并释放句柄，永不阻塞（运行线程自然收尾）。
+#[unsafe(no_mangle)]
+pub extern "C" fn cfst_compact_destroy(session: *mut CompactSession) {
+    if session.is_null() {
+        return;
+    }
+    // SAFETY: 指针来自 cfst_compact_create 且此前未 destroy（FFI 契约）
+    let session = unsafe { Box::from_raw(session) };
+    session.stop();
+}
+
+/// 在精简会话指针上执行操作；空指针 / panic 统一吞掉返回 None
+fn with_session<T>(session: *mut CompactSession, f: impl FnOnce(&CompactSession) -> T) -> Option<T> {
+    if session.is_null() {
+        return None;
+    }
+    // SAFETY: 调用方必须传回 create 返回且尚未 destroy 的指针（FFI 契约）
+    let session = unsafe { &*session };
+    catch_unwind(AssertUnwindSafe(|| f(session))).ok()
 }

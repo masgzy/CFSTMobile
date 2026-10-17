@@ -24,7 +24,7 @@ cli = ["dep:mimalloc"]
 icmp = ["dep:surge-ping"]
 
 [dependencies]
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "net"], default-features = false }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "net", "sync"], default-features = false }
 hyper = { version = "1", features = ["client", "http1"], default-features = false }
 rustls-pki-types = { version = "1", default-features = false }
 http = { version = "1", default-features = false }
