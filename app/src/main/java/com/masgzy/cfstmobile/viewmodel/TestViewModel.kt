@@ -526,7 +526,8 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             val config = s.copy(
                 pingMode = UiSettings.PING_TCP,
                 pingTimes = 1,
-                maxDelayMs = 100_000,
+                officialDelayMs = 100_000,
+                nsbDelayMs = 100_000,
                 maxLossRate = 1.0,
             ).toCfstConfig().copy(
                 ipText = ipText,
@@ -599,7 +600,8 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             val config = s.copy(
                 pingMode = UiSettings.PING_TCP,
                 pingTimes = 1,
-                maxDelayMs = 100_000,
+                officialDelayMs = 100_000,
+                nsbDelayMs = 100_000,
                 maxLossRate = 1.0,
             ).toCfstConfig().copy(
                 ipText = item.address(),
