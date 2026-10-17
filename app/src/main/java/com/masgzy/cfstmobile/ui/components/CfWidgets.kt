@@ -215,6 +215,22 @@ fun OptionItem(
     }
 }
 
+/** option-item 之间的标准间距 */
+@Composable
+fun OptionGap() = Spacer(Modifier.height(10.dp))
+
+/** 双列网格行（对齐 CFData .controls 的 option-item 2 列排布） */
+@Composable
+fun OptionGrid(
+    left: @Composable () -> Unit,
+    right: @Composable () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(modifier = Modifier.weight(1f)) { left() }
+        Box(modifier = Modifier.weight(1f)) { right() }
+    }
+}
+
 // ---------------------------------------------------------------- 输入控件
 
 /** 选择器（只读输入框 + 下拉箭头 + DropdownMenu，支持分组标题） */
