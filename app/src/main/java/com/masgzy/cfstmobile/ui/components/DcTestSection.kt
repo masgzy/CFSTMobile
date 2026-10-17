@@ -1,33 +1,24 @@
-package com.masgzy.cfstmobile.ui.dialogs
+package com.masgzy.cfstmobile.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,70 +26,78 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.masgzy.cfstmobile.data.DcInfo
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestItem
 import com.masgzy.cfstmobile.data.DcTestUiState
-import com.masgzy.cfstmobile.ui.components.copyToClipboard
-import com.masgzy.cfstmobile.ui.components.fmt1
-import com.masgzy.cfstmobile.ui.components.fmt2
 import com.masgzy.cfstmobile.ui.theme.delayColor
 import com.masgzy.cfstmobile.ui.theme.lossColor
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 import kotlin.math.roundToInt
 
 /**
- * 数据中心二次详细测试全屏对话框（对齐 CFData-WEB 官方模式交互）：
- * trace 探测归属 → 数据中心列表（按最低延迟排序）→ 选择后二次详细测试（min/max/avg/loss）。
+ * 数据中心二次详细测试区块（对齐 CFData-WEB「详细测试」Tab，内联于页面而非对话框）：
+ * 空闲（开始探测）→ trace 探测归属 → 数据中心列表（按最低延迟排序）→
+ * 选择后二次详细测试（min/max/avg/loss，实时排序）→ 完成/错误。
  */
 @Composable
-fun DcTestDialog(viewModel: TestViewModel, onDismiss: () -> Unit) {
-    val dcState by viewModel.dcState.collectAsStateWithLifecycle()
+fun DcTestSection(
+    viewModel: TestViewModel,
+    state: DcTestUiState,
+    hasResults: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
 
-    val close: () -> Unit = {
-        if (dcState.busy) viewModel.cancelDcTest()
-        onDismiss()
+    Column(modifier = modifier.fillMaxWidth()) {
+        when (state.step) {
+            DcStep.IDLE -> DcIdle(hasResults = hasResults, onStart = viewModel::startDcTest)
+            DcStep.PROBING_COLO -> DcProbing(state = state, onCancel = viewModel::cancelDcTest)
+            DcStep.DC_LIST -> DcList(state = state, onSelect = viewModel::testDc)
+            DcStep.TESTING -> DcTesting(state = state, onCancel = viewModel::cancelDcTest)
+            DcStep.DONE -> DcDone(
+                state = state,
+                onBack = viewModel::backToDcList,
+                onCopy = { copyToClipboard(context, it) },
+            )
+            DcStep.ERROR -> DcError(
+                state = state,
+                onBack = viewModel::backToDcList,
+                onReset = viewModel::resetDcTest,
+            )
+        }
     }
+}
 
-    Dialog(
-        onDismissRequest = close,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-        ),
+// ---------------------------------------------------------------- 空闲
+
+@Composable
+private fun DcIdle(hasResults: Boolean, onStart: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // 头部
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = close) {
-                        Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
-                    }
-                    Text(text = "数据中心测试", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-
-                when (dcState.step) {
-                    DcStep.IDLE -> DcCentered(text = "正在准备…")
-                    DcStep.PROBING_COLO -> DcProbing(state = dcState, onCancel = close)
-                    DcStep.DC_LIST -> DcList(state = dcState, onSelect = viewModel::testDc)
-                    DcStep.TESTING -> DcTesting(state = dcState, onCancel = close)
-                    DcStep.DONE -> DcDone(
-                        state = dcState,
-                        onBack = viewModel::backToDcList,
-                        onCopy = { copyToClipboard(context, it) },
-                    )
-                    DcStep.ERROR -> DcError(state = dcState, onDismiss = close, onBack = viewModel::backToDcList)
-                }
-            }
+        Text(
+            text = "对本次测速结果按数据中心聚合，点选后对该 DC 全部 IP 做二次详细测试" +
+                "（tcping×10 / httping×3，统计 min/avg/max/丢包）",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        PrimaryButton(
+            text = "开始探测数据中心",
+            onClick = onStart,
+            enabled = hasResults,
+            modifier = Modifier.padding(horizontal = 32.dp),
+        )
+        if (!hasResults) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "暂无测速结果，先完成一次扫描",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -108,27 +107,24 @@ fun DcTestDialog(viewModel: TestViewModel, onDismiss: () -> Unit) {
 @Composable
 private fun DcProbing(state: DcTestUiState, onCancel: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
         CircularProgressIndicator()
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
         Text(
             text = "正在识别数据中心归属（${state.probeDone}/${state.probeTotal}）",
-            fontSize = 15.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = "通过 speed.cloudflare.com/cdn-cgi/trace 获取每个 IP 所在的数据中心",
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
         TextButton(onClick = onCancel) { Text("取消") }
     }
 }
@@ -140,33 +136,22 @@ private fun DcList(state: DcTestUiState, onSelect: (String?) -> Unit) {
     val totalIps = state.dcList.sumOf { it.ipCount }
     val minLatency = state.dcList.minOfOrNull { it.minLatencyMs } ?: 0
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "基于本次测速结果按数据中心聚合；点选后对该数据中心的全部 IP 做二次详细测试" +
-                "（tcping 10 次 / httping 3 次，统计 min/avg/max/丢包）",
+            text = "点选数据中心后对该 DC 全部 IP 做二次详细测试",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(12.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            item(key = "__all__") {
-                DcCard(
-                    title = "全部数据中心",
-                    subtitle = "重新测试全部 ${state.dcList.size} 个数据中心的 IP",
-                    ipCount = totalIps,
-                    minLatencyMs = minLatency,
-                    onClick = { onSelect(null) },
-                )
-            }
-            items(state.dcList, key = { it.colo }) { dc ->
+        Spacer(Modifier.height(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DcCard(
+                title = "全部数据中心",
+                subtitle = "重新测试全部 ${state.dcList.size} 个数据中心的 IP",
+                ipCount = totalIps,
+                minLatencyMs = minLatency,
+                onClick = { onSelect(null) },
+            )
+            state.dcList.forEach { dc ->
                 DcCard(
                     title = dc.colo,
                     subtitle = dc.displayLocation(),
@@ -184,9 +169,7 @@ private fun DcList(state: DcTestUiState, onSelect: (String?) -> Unit) {
 private fun DcCard(title: String, subtitle: String, ipCount: Int, minLatencyMs: Int, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -221,11 +204,7 @@ private fun DcInfo.displayLocation(): String = when {
 
 @Composable
 private fun DcTesting(state: DcTestUiState, onCancel: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         val target = state.selectedDc?.let { "数据中心 $it" } ?: "全部数据中心"
         Text(
             text = "正在二次详细测试：$target（${state.testDone}/${state.testTotal}）",
@@ -239,14 +218,14 @@ private fun DcTesting(state: DcTestUiState, onCancel: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = "实时结果按 丢包率 → 最低延迟 → 最高延迟 → 平均延迟 排序",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        DcResultList(items = state.results, modifier = Modifier.weight(1f))
+        DcResultList(items = state.results, modifier = Modifier.height(300.dp))
         TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
             Text("终止并保留结果")
         }
@@ -259,11 +238,7 @@ private fun DcDone(
     onBack: () -> Unit,
     onCopy: (String) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -287,7 +262,17 @@ private fun DcDone(
             TextButton(onClick = onBack) { Text("返回选择") }
         }
         Spacer(Modifier.height(8.dp))
-        DcResultList(items = state.results, modifier = Modifier.weight(1f), onCopy = onCopy)
+        GreenButton(
+            text = "一键复制",
+            enabled = state.results.isNotEmpty(),
+            onClick = {
+                onCopy(
+                    state.results.joinToString("\n") { it.address() },
+                )
+            },
+        )
+        Spacer(Modifier.height(8.dp))
+        DcResultList(items = state.results, modifier = Modifier.height(300.dp), onCopy = onCopy)
     }
 }
 
@@ -299,9 +284,7 @@ private fun DcResultList(
 ) {
     if (items.isEmpty()) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp),
+            modifier = Modifier.fillMaxWidth().height(100.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(text = "暂无结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -309,7 +292,7 @@ private fun DcResultList(
         return
     }
     LazyColumn(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         items(items, key = { it.address() }) { item ->
@@ -327,9 +310,7 @@ private fun DcResultRow(item: DcTestItem, onCopy: ((String) -> Unit)?) {
         onClick = { onCopy?.invoke(item.address()) },
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -369,41 +350,25 @@ private fun DcResultRow(item: DcTestItem, onCopy: ((String) -> Unit)?) {
     }
 }
 
-// ---------------------------------------------------------------- 错误 / 占位
+// ---------------------------------------------------------------- 错误
 
 @Composable
-private fun DcCentered(text: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = text, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun DcError(state: DcTestUiState, onDismiss: () -> Unit, onBack: () -> Unit) {
+private fun DcError(state: DcTestUiState, onBack: () -> Unit, onReset: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = Icons.Filled.Info,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(36.dp),
-        )
-        Spacer(Modifier.height(16.dp))
         Text(
             text = state.message ?: "数据中心测试失败",
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.error,
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
         if (state.dcList.isNotEmpty()) {
             TextButton(onClick = onBack) { Text("返回数据中心列表") }
         } else {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onReset) { Text("重置") }
         }
     }
 }

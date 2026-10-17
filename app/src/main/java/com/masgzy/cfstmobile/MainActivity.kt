@@ -15,9 +15,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val viewModel: TestViewModel = viewModel(factory = TestViewModel.Factory)
-            // 动态取色开关在设置里，实时生效（Material You / Cloudflare 品牌色）
+            // 颜色模式（自动/浅色/深色）+ 动态取色开关实时生效（Material You / Cloudflare 品牌色）
             val settings by viewModel.settings.collectAsStateWithLifecycle()
-            CfstTheme(dynamicColors = settings.dynamicColors) {
+            CfstTheme(
+                dynamicColors = settings.dynamicColors,
+                themeMode = settings.themeMode,
+            ) {
                 AppRoot(viewModel = viewModel)
             }
         }

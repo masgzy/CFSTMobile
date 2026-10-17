@@ -16,7 +16,7 @@
 
 </div>
 
-CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它不做 WebView 壳、不依赖 gomobile —— 测速核心是 Rust 编译的 `libcfst.so`,通过 JNI 直连符号供 Kotlin 调用;界面为纯 Kotlin + Jetpack Compose(Masonry 级 Material 3,支持 Material You 动态取色)。导出与上传协议与 [PoemMisty/CFData-WEB](https://github.com/PoemMisty/CFData-WEB) 保持兼容,CFData 用户可以无缝迁移。
+CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它不做 WebView 壳、不依赖 gomobile —— 测速核心是 Rust 编译的 `libcfst.so`,通过 JNI 直连符号供 Kotlin 调用;界面为纯 Kotlin + Jetpack Compose(Material 3),布局逐块复刻 [CFData-WEB](https://github.com/PoemMisty/CFData-WEB) 单页结构(状态横幅/官方·非标双模式/参数卡/扫描结果·详细测试双 Tab/终端日志),配色走 Material You 动态取色。导出与上传协议与 [PoemMisty/CFData-WEB](https://github.com/PoemMisty/CFData-WEB) 保持兼容,CFData 用户可以无缝迁移。
 
 > ⚠️ 非官方工具,与 Cloudflare, Inc. 无关联。仅供网络质量研究,请遵守当地法律法规。
 
@@ -33,7 +33,7 @@ CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它
 | ☁️ **edgetunnel 上传** | 结果直接写入 edgetunnel(CM 系 Worker)订阅 `ADD.txt`,覆盖/追加双模式,多账户管理;协议与 CFData-WEB 一致 |
 | 🐙 **GitHub 上传** | 优选结果提交到 GitHub 仓库(Contents API,新建/更新自动识别),raw 直链可分享/订阅;与 CFData-WEB 同一 API 行为 |
 | 🗺️ **数据中心二次详细测试** | 结果按数据中心(Colo)聚合(官方 locations 位置表优先,CFData 同源回退),点选后对该 DC 全部 IP 二次精测:tcping×10 / httping×3,统计 min/avg/max/丢包;与 CFData-WEB 官方模式同语义 |
-| 🧩 **Material You** | Material 3 组件 + Android 12+ 动态取色(可关闭回退品牌蓝);深色模式自适应 |
+| 🧩 **Material You** | Material 3 组件 + Android 12+ 动态取色(可关闭回退品牌蓝);颜色模式 浅色/深色/自动;CFData-WEB 同款单页布局 |
 | 🗄️ **历史记录** | 测速结果本地留档,随时回看、再次导出 |
 | 🔌 **演示模式** | 未检测到引擎 `.so` 时自动降级为 Mock 数据,UI 开发/体验不受阻 |
 
@@ -101,10 +101,10 @@ Release 签名:工程根目录放 `keystore.properties`(`storeFile` / `storePass
 ## 🙏 致谢
 
 - [GuangYu-yu/CloudflareST-Rust](https://github.com/GuangYu-yu/CloudflareST-Rust) —— Rust 测速引擎基座(GPL-3.0)
-- [Hsia97/CFSTAPP](https://github.com/Hsia97/CFSTAPP) —— UI 结构与交互参照
+- [PoemMisty/CFData-WEB](https://github.com/PoemMisty/CFData-WEB) —— UI 布局与交互参照(单页结构逐块复刻)
 - [PoemMisty/CFData-WEB](https://github.com/PoemMisty/CFData-WEB) —— 导出格式与 edgetunnel 上传协议参照
 - [XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest) —— CSV 列序与项目生态的源头
 
 ## 📄 License
 
-[GPL-3.0](LICENSE)。引擎部分衍生自 CloudflareST-Rust(GPL-3.0),动态链接构成合并作品,本项目整体以 GPL-3.0 发布;UI 参照 CFSTAPP、协议参照 CFData-WEB,版权归各自作者所有。
+[GPL-3.0](LICENSE)。引擎部分衍生自 CloudflareST-Rust(GPL-3.0),动态链接构成合并作品,本项目整体以 GPL-3.0 发布;UI 布局与协议参照 CFData-WEB,版权归各自作者所有。
