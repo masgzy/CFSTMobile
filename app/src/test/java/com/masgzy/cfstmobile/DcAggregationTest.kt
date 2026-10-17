@@ -74,12 +74,12 @@ class DcAggregationTest {
     @Test
     fun `sort by loss then min then max then avg then ip`() {
         val list = mutableListOf(
-            DcTestItem(ip = "2.2.2.2", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 70.0, lossRate = 0.0),
-            DcTestItem(ip = "1.1.1.1", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 70.0, lossRate = 0.1),
-            DcTestItem(ip = "3.3.3.3", port = 443, colo = "HKG", minMs = 60, avgMs = 60.0, maxMs = 70.0, lossRate = 0.0),
-            DcTestItem(ip = "4.4.4.4", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 80.0, lossRate = 0.0),
-            DcTestItem(ip = "5.5.5.5", port = 443, colo = "HKG", minMs = 50, avgMs = 65.0, maxMs = 70.0, lossRate = 0.0),
-            DcTestItem(ip = "0.0.0.9", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 70.0, lossRate = 0.0),
+            DcTestItem(ip = "2.2.2.2", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 70, lossRate = 0.0),
+            DcTestItem(ip = "1.1.1.1", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 70, lossRate = 0.1),
+            DcTestItem(ip = "3.3.3.3", port = 443, colo = "HKG", minMs = 60, avgMs = 60.0, maxMs = 70, lossRate = 0.0),
+            DcTestItem(ip = "4.4.4.4", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 80, lossRate = 0.0),
+            DcTestItem(ip = "5.5.5.5", port = 443, colo = "HKG", minMs = 50, avgMs = 65.0, maxMs = 70, lossRate = 0.0),
+            DcTestItem(ip = "0.0.0.9", port = 443, colo = "HKG", minMs = 50, avgMs = 60.0, maxMs = 70, lossRate = 0.0),
         )
         sortDcResults(list)
         // loss=0 的里面：0.0.0.9（min 同）→ max 同 → avg 同 → ip 字符串 "0.0.0.9" < "2.2.2.2" < "3.3.3.3"(min 60 其实更大)
