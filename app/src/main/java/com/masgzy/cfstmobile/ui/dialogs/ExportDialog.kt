@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +27,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +65,8 @@ import com.masgzy.cfstmobile.data.GithubClient
 import com.masgzy.cfstmobile.data.GithubStore
 import com.masgzy.cfstmobile.model.CfstResultItem
 import com.masgzy.cfstmobile.model.ExportFormatter
+import com.masgzy.cfstmobile.model.ExportFormatter.ExportField
+import com.masgzy.cfstmobile.model.ExportFormatter.ExportOptions
 import com.masgzy.cfstmobile.ui.components.copyToClipboard
 import kotlinx.coroutines.launch
 
@@ -69,23 +74,40 @@ import kotlinx.coroutines.launch
  * 导出与上传底部抽屉（Material You ModalBottomSheet）：
  *
  * 1. 结果导出：TXT（CFData-WEB 兼容 `IP:端口#数据中心`）或 CSV（XIU2 CloudflareST
- *    兼容列序），预览后一键复制；CFData-WEB 用户迁移零成本。
+ *    兼容列序），预览后一键复制；支持行范围 / IP 类型 / 字段选择 / TXT 分隔符 /
+ *    IPv6 方括号自定义（管线对齐 CFData-WEB 导出弹窗）。
  * 2. edgetunnel 上传：把导出内容写入 edgetunnel（CM 系 Worker）的订阅 ADD.txt，
  *    协议与 CFData-WEB 完全一致；支持多账户管理（新增/选择/删除）与
  *    覆盖/追加两种模式。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val store = remember { EdgetunnelStore(context) }
     val scope = rememberCoroutineScope()
 
-    // ---------------- 导出状态 ----------------
+    // ---------------- 导出状态（行范围/IP 类型/字段/分隔符，管线对齐 CFData） ----------------
     var format by remember { mutableStateOf(FORMAT_TXT) }
-    val content = remember(format, results) {
-        if (format == FORMAT_TXT) ExportFormatter.toTxt(results) else ExportFormatter.toCsv(results)
+    var fieldOrder by remember { mutableStateOf(ExportFormatter.DEFAULT_TXT_FIELDS) }
+    var startRowText by remember { mutableStateOf("1") }
+    var endRowText by remember { mutableStateOf("0") }
+    var ipFilter by remember { mutableStateOf(ExportFormatter.IP_ALL) }
+    var txtSeparator by remember { mutableStateOf("-") }
+    var ipv6Brackets by remember { mutableStateOf(false) }
+
+    val exportOptions = ExportOptions(
+        startRow = startRowText.toIntOrNull()?.coerceAtLeast(1) ?: 1,
+        endRow = endRowText.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+        ipFilter = ipFilter,
+        fields = fieldOrder,
+        txtSeparator = txtSeparator.ifBlank { "-" },
+        ipv6Brackets = ipv6Brackets,
+    )
+    val content = remember(format, results, exportOptions) {
+        ExportFormatter.build(results, format, exportOptions)
     }
+    val exportedCount = remember(content) { content.lines().count { it.isNotBlank() } }
     val preview = remember(content) { content.lines().take(6).joinToString("\n") }
 
     // ---------------- edgetunnel 状态 ----------------
@@ -142,23 +164,100 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = format == FORMAT_TXT,
-                    onClick = { format = FORMAT_TXT },
+                    // 对齐 CFData：切换格式时字段重置为该格式默认列序
+                    onClick = {
+                        format = FORMAT_TXT
+                        fieldOrder = ExportFormatter.DEFAULT_TXT_FIELDS
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     label = { Text("TXT（CFData 兼容）", maxLines = 1) },
                 )
                 SegmentedButton(
                     selected = format == FORMAT_CSV,
-                    onClick = { format = FORMAT_CSV },
+                    onClick = {
+                        format = FORMAT_CSV
+                        fieldOrder = ExportFormatter.DEFAULT_CSV_FIELDS
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                     label = { Text("CSV（XIU2 兼容）", maxLines = 1) },
                 )
             }
-            if (format == FORMAT_TXT) {
-                Text(
-                    text = "每行 IP:端口#数据中心，可直接粘贴到 edgetunnel / 代理软件优选列表",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(
+                text = if (format == FORMAT_TXT) {
+                    "每行 IP:端口#数据中心，可直接粘贴到 edgetunnel / 代理软件优选列表"
+                } else {
+                    "列序对齐 XIU2/CloudflareST result.csv，便于表格工具对表"
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            // 行范围（对齐 CFData 开始行/结束行，结束行 0=到末尾）
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = startRowText,
+                    onValueChange = { startRowText = it.filter(Char::isDigit).take(5) },
+                    label = { Text("开始行") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 13.sp),
                 )
+                OutlinedTextField(
+                    value = endRowText,
+                    onValueChange = { endRowText = it.filter(Char::isDigit).take(5) },
+                    label = { Text("结束行(0=末尾)") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 13.sp),
+                )
+            }
+            // IP 类型筛选
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                listOf("全部" to ExportFormatter.IP_ALL, "仅 IPv4" to ExportFormatter.IP_V4, "仅 IPv6" to ExportFormatter.IP_V6)
+                    .forEachIndexed { idx, (label, value) ->
+                        SegmentedButton(
+                            selected = ipFilter == value,
+                            onClick = { ipFilter = value },
+                            shape = SegmentedButtonDefaults.itemShape(index = idx, count = 3),
+                            label = { Text(label, maxLines = 1) },
+                        )
+                    }
+            }
+            // 字段选择（选择顺序即输出列序；TXT 的 IP:PORT 恒为首列）
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ExportField.entries.forEach { f ->
+                    FilterChip(
+                        selected = f in fieldOrder,
+                        onClick = {
+                            fieldOrder = if (f in fieldOrder) fieldOrder - f else fieldOrder + f
+                        },
+                        label = { Text(f.label, fontSize = 11.sp, maxLines = 1) },
+                    )
+                }
+            }
+            // TXT 专属：字段分隔符 + IPv6 方括号
+            if (format == FORMAT_TXT) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = txtSeparator,
+                        onValueChange = { txtSeparator = it.take(3) },
+                        label = { Text("TXT 分隔符") },
+                        modifier = Modifier.width(150.dp),
+                        singleLine = true,
+                        textStyle = TextStyle(fontSize = 13.sp),
+                    )
+                    FilterChip(
+                        selected = ipv6Brackets,
+                        onClick = { ipv6Brackets = !ipv6Brackets },
+                        label = { Text("IPv6 方括号", fontSize = 11.sp, maxLines = 1) },
+                    )
+                }
             }
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -180,7 +279,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 onClick = {
                     copyToClipboard(context, content)
                     etStatusOk = true
-                    etStatus = "已复制到剪贴板（${results.size} 条）"
+                    etStatus = "已复制到剪贴板（$exportedCount 条）"
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("复制到剪贴板") }
