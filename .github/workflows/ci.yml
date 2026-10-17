@@ -131,3 +131,28 @@ jobs:
 
       - name: 构建 Debug APK（验证集成）
         run: ./gradlew :app:assembleDebug --no-daemon
+
+      # main 分支每次构建的 APK 都挂到本运行的 Artifacts（附件）区，
+      # 无需等 tag 发版即可下载最新提交的安装包验证
+      - name: 重命名 APK（CFSTMobile-<版本>-<abi>-debug）
+        run: |
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -1)
+          OUT=app/build/outputs/apk/debug
+          mkdir -p "$OUT/renamed"
+          for f in "$OUT"/*-debug.apk; do
+            case "$f" in
+              *arm64-v8a*)   ABI=arm64-v8a ;;
+              *armeabi-v7a*) ABI=armeabi-v7a ;;
+              *x86_64*)      ABI=x86_64 ;;
+              *)             ABI=universal ;;
+            esac
+            mv "$f" "$OUT/renamed/CFSTMobile-$VERSION-$ABI-debug.apk"
+          done
+          ls -lh "$OUT/renamed"
+
+      - name: 上传 APK 附件（Actions Artifacts）
+        uses: actions/upload-artifact@v7
+        with:
+          name: CFSTMobile-debug-apk
+          path: app/build/outputs/apk/debug/renamed/*.apk
+          if-no-files-found: error
