@@ -47,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -196,7 +195,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     label = { Text("开始行") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                    textStyle = MaterialTheme.typography.bodyMedium,
                 )
                 OutlinedTextField(
                     value = endRowText,
@@ -204,7 +203,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     label = { Text("结束行(0=末尾)") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                    textStyle = MaterialTheme.typography.bodyMedium,
                 )
             }
             // IP 类型筛选
@@ -246,7 +245,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                         label = { Text("TXT 分隔符") },
                         modifier = Modifier.width(150.dp),
                         singleLine = true,
-                        textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                        textStyle = MaterialTheme.typography.bodyMedium,
                     )
                     FilterChip(
                         selected = ipv6Brackets,
@@ -360,7 +359,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 placeholder = { Text("例如 main-tunnel", style = MaterialTheme.typography.bodySmall) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
                 value = etHost,
@@ -369,7 +368,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 placeholder = { Text("https://example.com", style = MaterialTheme.typography.bodySmall) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
                 value = etPassword,
@@ -378,7 +377,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -614,7 +613,7 @@ private fun GithubSection(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+            textStyle = MaterialTheme.typography.bodyMedium,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -623,7 +622,7 @@ private fun GithubSection(
                 label = { Text("属主 owner") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
                 value = ghRepo,
@@ -631,7 +630,7 @@ private fun GithubSection(
                 label = { Text("仓库 repo") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -641,7 +640,7 @@ private fun GithubSection(
                 label = { Text("分支") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
                 value = ghPath,
@@ -649,7 +648,7 @@ private fun GithubSection(
                 label = { Text("文件路径") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+                textStyle = MaterialTheme.typography.bodyMedium,
             )
         }
         OutlinedTextField(
@@ -658,7 +657,7 @@ private fun GithubSection(
             label = { Text("提交信息") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
+            textStyle = MaterialTheme.typography.bodyMedium,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),

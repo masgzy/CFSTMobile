@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 官方 Material 要求的 edge-to-edge：内容延伸到系统栏，
-        // Scaffold/LargeFlexibleTopAppBar 通过 windowInsets 自行避让
+        // Scaffold/LargeTopAppBar 通过 windowInsets 自行避让
         enableEdgeToEdge()
         setContent {
             val viewModel: TestViewModel = viewModel(factory = TestViewModel.Factory)
