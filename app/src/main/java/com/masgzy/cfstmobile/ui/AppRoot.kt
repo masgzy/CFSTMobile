@@ -29,11 +29,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +76,7 @@ import com.masgzy.cfstmobile.ui.components.ParamsSection
 import com.masgzy.cfstmobile.ui.components.PrimaryButton
 import com.masgzy.cfstmobile.ui.components.ResultsSection
 import com.masgzy.cfstmobile.ui.components.StatusBanner
+import com.masgzy.cfstmobile.ui.theme.CfMotion
 import com.masgzy.cfstmobile.ui.dialogs.ExportDialog
 import com.masgzy.cfstmobile.ui.dialogs.HistoryDialog
 import com.masgzy.cfstmobile.viewmodel.TestUiState
@@ -88,15 +88,15 @@ internal fun android.view.View.tickHaptic() {
 }
 
 /**
- * 应用根（完全 Material You + Expressive）：
- * LargeFlexibleTopAppBar（Expressive 弹性大顶栏：主标题 + 版本 subtitle + 右上操作）→
+ * 应用根（完全 Material You）：
+ * LargeTopAppBar（滚动折叠：主标题 + 版本号副行 + 右上操作）→
  * 状态横幅 → 模式切换（SegmentedButton）→ 参数卡 → 开始按钮 → 进度条 →
  * 结果区（官方双 Tab：扫描/详细测试）→ 终端日志。
  * 外观设置走 ModalBottomSheet（M3 底部弹层：颜色模式/动态取色/AMOLED）。
- * 全部过渡动效接入 MaterialTheme.motionScheme（官方 Expressive spring 参数）。
+ * 全部过渡动效接入 CfMotion（M3 Expressive 官方 spring 参数，见 theme/Motion.kt）。
  * 非标模式隐藏详细测试 Tab（对齐 CFData switchMode）。
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(viewModel: TestViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -111,8 +111,8 @@ fun AppRoot(viewModel: TestViewModel) {
     var showExport by remember { mutableStateOf(false) }
     var scanTab by rememberSaveable { mutableStateOf(true) }
     val official = settings.ipSource == UiSettings.SOURCE_BUILTIN
-    // transitionSpec lambda 非 @Composable 上下文，motionScheme 须在组合期先捕获
-    val motion = MaterialTheme.motionScheme
+    // CfMotion 为无状态单例，任何 lambda（含非组合的 transitionSpec）均可直接引用
+    val motion = CfMotion
 
     LaunchedEffect(viewModel) {
         viewModel.toast.collect { message ->
@@ -131,9 +131,21 @@ fun AppRoot(viewModel: TestViewModel) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeFlexibleTopAppBar(
-                title = { Text("CFSTMobile") },
-                subtitle = { Text("v${BuildConfig.VERSION_NAME}") },
+            LargeTopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = "CFSTMobile",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 actions = { TopActions(viewModel, settings) },
                 scrollBehavior = scrollBehavior,
             )

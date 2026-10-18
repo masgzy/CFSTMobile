@@ -3,8 +3,7 @@ package com.masgzy.cfstmobile.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -19,7 +18,7 @@ import com.masgzy.cfstmobile.data.UiSettings
  * - Android 12+ 默认从壁纸动态取色（dynamicLight/DarkColorScheme，AOSP 65 色调色板）
  * - 低版本或关闭动态取色时回退 Cloudflare 蓝品牌色（完整 M3 tonal 方案，明暗全槽位）
  * - AMOLED 纯黑：深色模式下表面/容器全部转纯黑系（ImageToolbox 等标杆应用的标配选项）
- * - Expressive 动效：MaterialExpressiveTheme + CfMotionScheme（官方 spring 参数）
+ * - Expressive 动效：CfMotion 官方 spring 参数（见 Motion.kt，随各组件接入）
  * 颜色模式（自动/浅色/深色）对齐 CFData-WEB 设置菜单；
  * 延迟/丢包三档配色与绿色操作按钮为语义色，不随主题变化。
  */
@@ -133,7 +132,6 @@ private val DarkColorsAmoled = DarkColors.copy(
     surfaceContainerHighest = Color(0xFF1C1F24),
 )
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CfstTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -159,9 +157,8 @@ fun CfstTheme(
         dark -> if (amoled) DarkColorsAmoled else DarkColors
         else -> LightColors
     }
-    MaterialExpressiveTheme(
+    MaterialTheme(
         colorScheme = colorScheme,
-        motionScheme = CfMotionScheme,
         content = content,
     )
 }

@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.ui.tickHaptic
 import com.masgzy.cfstmobile.ui.theme.CfGreen
+import com.masgzy.cfstmobile.ui.theme.CfMotion
 import com.masgzy.cfstmobile.ui.theme.LogBg
 import com.masgzy.cfstmobile.ui.theme.LogBorder
 import com.masgzy.cfstmobile.ui.theme.LogGreen
@@ -80,7 +81,7 @@ import com.masgzy.cfstmobile.ui.theme.OkGreen
  * 下拉选择 / 徽章 / 语义绿操作按钮 / 终端日志面板 / 结果 Tab（M3 TabRow）。
  * 颜色全部走 MaterialTheme 语义槽位（动态取色随壁纸），
  * 文字走 M3 typography 角色令牌（titleMedium/labelLarge/bodyMedium…），
- * 动效走 MaterialTheme.motionScheme（官方 Expressive spring 参数），
+ * 动效走 CfMotion（M3 Expressive 官方 spring 参数，见 theme/Motion.kt），
  * 选择类交互附带轻触感反馈。
  * 仅语义色（成功绿/日志深底）固定不变。
  */
@@ -96,7 +97,7 @@ internal val M3ItemShape = RoundedCornerShape(14.dp)
  *  状态切换颜色走 effects spring（无过冲）、文字淡入淡出走 fast effects */
 @Composable
 fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier) {
-    val motion = MaterialTheme.motionScheme
+    val motion = CfMotion
     val targetAccent = when (state) {
         BannerState.OK -> OkGreen
         BannerState.BUSY -> MaterialTheme.colorScheme.primary
