@@ -25,6 +25,9 @@ class MainActivity : ComponentActivity() {
                 dynamicColors = settings.dynamicColors,
                 themeMode = settings.themeMode,
                 amoled = settings.amoled,
+                colorTuple = settings.colorTuple,
+                paletteStyle = settings.paletteStyle,
+                themeContrast = settings.themeContrast,
             ) {
                 AppRoot(viewModel = viewModel)
             }

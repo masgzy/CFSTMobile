@@ -290,4 +290,76 @@ class UiSettingsTest {
         val s = UiSettings(amoled = true)
         assertTrue(s.sanitized().amoled)
     }
+
+    // ---------------------------------------------------------------- 外观设置（调色板）
+
+    @Test
+    fun `palette fields default to cloudflare blue tonal spot`() {
+        val s = UiSettings()
+        assertEquals(0xFF0B57D0, s.colorTuple.primary)
+        assertNull(s.colorTuple.secondary)
+        assertNull(s.colorTuple.error)
+        assertEquals("TonalSpot", s.paletteStyle)
+        assertEquals(0f, s.themeContrast)
+    }
+
+    @Test
+    fun `seed colors round trip through json`() {
+        val s = UiSettings(
+            colorTuple = com.masgzy.cfstmobile.data.SeedColors(
+                primary = 0xFF88DD20,
+                secondary = null,
+                tertiary = 0xFF01a0a3,
+            ),
+            paletteStyle = "Vibrant",
+            themeContrast = 0.5f,
+        )
+        val restored = ProtocolJson.json.decodeFromString(
+            UiSettings.serializer(),
+            ProtocolJson.json.encodeToString(UiSettings.serializer(), s),
+        )
+        assertEquals(0xFF88DD20, restored.colorTuple.primary)
+        assertNull(restored.colorTuple.secondary)
+        assertEquals(0xFF01a0a3, restored.colorTuple.tertiary)
+        assertEquals("Vibrant", restored.paletteStyle)
+        assertEquals(0.5f, restored.themeContrast)
+    }
+
+    @Test
+    fun `legacy json without palette fields gets defaults`() {
+        // 调色板字段加入前的持久化 JSON → 反序列化走 Cloudflare 蓝默认种子
+        val legacy = """{"ipSource":"builtin","themeMode":"dark","dynamicColors":false,"amoled":true}"""
+        val s = ProtocolJson.json.decodeFromString(UiSettings.serializer(), legacy)
+        assertEquals(0xFF0B57D0, s.colorTuple.primary)
+        assertEquals("TonalSpot", s.paletteStyle)
+        assertEquals(0f, s.themeContrast)
+        assertTrue(s.amoled)
+    }
+
+    @Test
+    fun `palette fields survive sanitized roundtrip`() {
+        val s = UiSettings(
+            colorTuple = com.masgzy.cfstmobile.data.SeedColors(primary = 0xFFD7036A),
+            paletteStyle = "Expressive",
+            themeContrast = -0.25f,
+        )
+        val kept = s.sanitized()
+        assertEquals(0xFFD7036A, kept.colorTuple.primary)
+        assertEquals("Expressive", kept.paletteStyle)
+        assertEquals(-0.25f, kept.themeContrast)
+    }
+
+    @Test
+    fun `nsb target dc passes comma separated list through`() {
+        // 引擎 parse_colo_filters 逐段 trim + 忽略大小写；App 层只整体 trim
+        val json = ProtocolJson.json.encodeToString(
+            com.masgzy.cfstmobile.model.CfstConfig.serializer(),
+            UiSettings(
+                ipSource = UiSettings.SOURCE_CUSTOM,
+                customIpText = "1.2.3.4",
+                nsbTargetDc = "HKG, NRT ",
+            ).toCfstConfig(),
+        )
+        assertTrue(json.contains("\"httping_colo\":\"HKG, NRT\""))
+    }
 }

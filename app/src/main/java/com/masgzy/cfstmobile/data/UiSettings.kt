@@ -36,6 +36,26 @@ object SpeedUrlPresets {
 }
 
 /**
+ * 主题配色种子（ImageToolbox ColorTuple 语义）：主色必填，
+ * 其余五个角色为空时由调色引擎按主色 HCT 规则派生。
+ * 颜色用 Long ARGB 存储（JSON 序列化稳定）。
+ */
+@Serializable
+data class SeedColors(
+    val primary: Long = DEFAULT_SEED,
+    val secondary: Long? = null,
+    val tertiary: Long? = null,
+    val surface: Long? = null,
+    val neutralVariant: Long? = null,
+    val error: Long? = null,
+) {
+    companion object {
+        /** 默认种子：Cloudflare 品牌蓝（原品牌回退方案主色） */
+        const val DEFAULT_SEED = 0xFF0B57D0
+    }
+}
+
+/**
  * UI 层设置（持久化为 JSON；新增字段靠 kotlinx-serialization 默认值向后兼容）。
  *
  * 参数按官方/非标分成两组（对齐 CFData-WEB config.official / config.nsb 独立持久化语义）：
@@ -128,10 +148,16 @@ data class UiSettings(
     val sortBy: String = SortMode.SCORE,
     /** 主题模式：auto / light / dark（对齐 CFData 设置菜单颜色模式） */
     val themeMode: String = THEME_AUTO,
-    /** Material You 动态取色（Android 12+ 跟随壁纸；关闭则用 Cloudflare 蓝品牌色） */
+    /** Material You 动态取色（Android 12+ 跟随壁纸；关闭则用调色板种子色） */
     val dynamicColors: Boolean = true,
-    /** AMOLED 纯黑深色（仅深色模式下生效，表面/容器转纯黑系） */
+    /** AMOLED 纯黑深色（浅色模式下也可开启，实际作用于夜间模式） */
     val amoled: Boolean = false,
+    /** 主题配色种子（动态取色关闭时生效，ImageToolbox 式调色板） */
+    val colorTuple: SeedColors = SeedColors(),
+    /** 调色板风格（PaletteStyle 枚举名，默认 TonalSpot） */
+    val paletteStyle: String = STYLE_DEFAULT,
+    /** 对比度 -1..1（DynamicScheme contrastLevel） */
+    val themeContrast: Float = 0f,
     /** 启动时自动加载已保存配置 */
     val autoLoadConfig: Boolean = false,
 ) {
@@ -241,6 +267,9 @@ data class UiSettings(
         const val THEME_AUTO = "auto"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
+
+        /** 调色板风格默认值（PaletteStyle.TonalSpot 枚举名） */
+        const val STYLE_DEFAULT = "TonalSpot"
 
         /** 自动上传账户：不上传 */
         const val UPLOAD_OFF = "off"

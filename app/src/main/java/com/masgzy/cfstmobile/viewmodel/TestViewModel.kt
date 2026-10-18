@@ -199,6 +199,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveConfigSnapshot() {
         configBackup.save(_settings.value)
+        _toast.tryEmit("已保存当前配置")
         log("已保存当前配置")
     }
 
@@ -210,11 +211,13 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         }
         _settings.value = saved
         settingsRepo.save(saved)
+        _toast.tryEmit("已加载保存配置")
         log("已加载保存配置")
     }
 
     fun deleteConfigSnapshot() {
         configBackup.delete()
+        _toast.tryEmit("已删除保存配置")
         log("已删除保存配置")
     }
 
@@ -225,6 +228,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         val defaults = UiSettings()
         _settings.value = defaults
         settingsRepo.save(defaults)
+        _toast.tryEmit("已恢复全部默认配置")
         log("已恢复全部默认配置")
     }
 
