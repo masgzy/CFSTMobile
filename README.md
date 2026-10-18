@@ -33,7 +33,7 @@ CFSTMobile 是一款 Android 原生的 Cloudflare IP 优选与测速应用。它
 | ☁️ **edgetunnel 上传** | 结果直接写入 edgetunnel(CM 系 Worker)订阅 `ADD.txt`,覆盖/追加双模式,多账户管理;协议与 CFData-WEB 一致 |
 | 🐙 **GitHub 上传** | 优选结果提交到 GitHub 仓库(Contents API,新建/更新自动识别),raw 直链可分享/订阅;与 CFData-WEB 同一 API 行为 |
 | 🗺️ **数据中心二次详细测试** | 结果按数据中心(Colo)聚合(官方 locations 位置表优先,CFData 同源回退),点选后对该 DC 全部 IP 二次精测:tcping×10 / httping×3,统计 min/avg/max/丢包;与 CFData-WEB 官方模式同语义 |
-| 🧩 **Material You** | Material 3 组件 + Android 12+ 动态取色(可关闭回退品牌蓝);颜色模式 浅色/深色/自动;CFData-WEB 同款单页布局 |
+| 🧩 **Material You** | Material 3 组件 + Android 12+ 动态取色(可关闭后用 ImageToolbox 式调色板:17 预设/自定义种子色/九种调色板风格/对比度);AMOLED 纯黑(夜间模式表面纯黑);颜色模式 浅色/深色/跟随系统;CFData-WEB 同款单页布局 |
 | 🗄️ **历史记录** | 测速结果本地留档,随时回看、再次导出 |
 | 🔌 **演示模式** | 未检测到引擎 `.so` 时自动降级为 Mock 数据,UI 开发/体验不受阻 |
 

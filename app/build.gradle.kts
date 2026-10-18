@@ -113,6 +113,12 @@ dependencies {
     // FFI 协议 JSON（配置/进度/结果）+ 设置持久化
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
+    // 调色引擎（ImageToolbox 同款，经 masgzy/AnythingMobile 同源验证的 5.0.1）：
+    // material-kolor 提供 toColorScheme；material-color-utilities 提供
+    // HCT/TonalPalette/DynamicScheme/Scheme* 九种调色板风格。
+    implementation("com.materialkolor:material-kolor:5.0.1")
+    implementation("com.materialkolor:material-color-utilities:5.0.1")
+
     // JVM 单测：FFI JSON 协议回归网（对齐 engine/README.md 的样例报文）
     testImplementation("junit:junit:4.13.2")
 

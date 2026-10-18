@@ -474,7 +474,7 @@ private fun NonStdParams(
                 CfTextField(
                     value = settings.nsbTargetDc,
                     onValueChange = { v -> onUpdate { it.copy(nsbTargetDc = v) } },
-                    placeholder = "留空不限制，如 NRT",
+                    placeholder = "留空不限制，可多个：HKG, NRT",
                 )
             }
         },
