@@ -36,7 +36,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.HistoryRecord
@@ -67,7 +66,7 @@ fun HistoryDialog(viewModel: TestViewModel, onDismiss: () -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = "共 ${records.size} 条记录", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "共 ${records.size} 条记录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Button(
                         onClick = { viewModel.clearHistory() },
                         colors = ButtonDefaults.buttonColors(containerColor = BadRed),
@@ -127,10 +126,10 @@ private fun HistoryRecordCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "记录 ${index + 1}（${record.items.size} 个结果）", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(text = "记录 ${index + 1}（${record.items.size} 个结果）", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                     Text(
                         text = "${record.summary} · ${formatTime(record.timestamp)}",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -151,17 +150,17 @@ private fun HistoryRecordCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = "${item.ip}:${item.port}", fontSize = 12.sp)
+                    Text(text = "${item.ip}:${item.port}", style = MaterialTheme.typography.bodySmall)
                     Row {
                         Text(
                             text = "${fmt2(item.delayMs)}ms",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = item.downloadSpeedMbps?.let { "${fmt2(it)}Mbps" } ?: "-",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
@@ -170,13 +169,13 @@ private fun HistoryRecordCard(
             if (record.items.size > 3) {
                 Text(
                     text = "… 还有 ${record.items.size - 3} 项",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onShowDetail) { Text("查看详情", fontSize = 12.sp) }
+                TextButton(onClick = onShowDetail) { Text("查看详情", style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
@@ -194,7 +193,7 @@ fun HistoryDetailDialog(record: HistoryRecord, onDismiss: () -> Unit) {
             Column {
                 Text(
                     text = "${record.summary} · ${formatTime(record.timestamp)}",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -222,22 +221,22 @@ private fun ResultLineCard(rank: Int, item: CfstResultItem, onClick: () -> Unit)
         onClick = onClick,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(text = "#$rank  ${item.ip}:${item.port}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(text = "#$rank  ${item.ip}:${item.port}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(text = "延迟：${fmt2(item.delayMs)} ms", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "延迟：${fmt2(item.delayMs)} ms", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
                     text = item.downloadSpeedMbps?.let { "下载：${fmt2(it)} Mbps" } ?: "未测速",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
             Text(
                 text = "丢包：${fmt2(item.lossRate * 100)}%",
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = if (item.lossRate <= 0.0) {
                     com.masgzy.cfstmobile.ui.theme.OkGreen
                 } else {

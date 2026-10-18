@@ -27,7 +27,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.DcInfo
 import com.masgzy.cfstmobile.data.DcStep
@@ -73,7 +72,7 @@ fun ResultsSection(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("扫描结果", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("扫描结果", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             CountBadge(scanRows.size)
         }
@@ -188,21 +187,21 @@ private fun DcSummaryTable(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(6.dp))
-            Text("数据中心汇总", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("数据中心汇总", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             CountBadge(dcList.size)
             Spacer(Modifier.weight(1f))
             if (testingDc != null) {
                 Text(
                     text = "测试中: $testingDc",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
             } else if (currentHint != null && testedDcs.isNotEmpty()) {
                 Text(
                     text = currentHint,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -213,7 +212,7 @@ private fun DcSummaryTable(
             listOf("数据中心", "落地区域", "城市", "IP数量", "最低延迟", "操作").forEach {
                 Text(
                     text = it,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -228,26 +227,26 @@ private fun DcSummaryTable(
             ) {
                 Text(
                     text = dc.colo,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = dc.country.ifEmpty { "-" },
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                 )
                 Text(
                     text = dc.city.ifEmpty { "-" },
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                 )
-                Text(text = dc.ipCount.toString(), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text(text = dc.ipCount.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                 Text(
                     text = "${dc.minLatencyMs}ms",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     color = delayColor(dc.minLatencyMs.toDouble()),
                     modifier = Modifier.weight(1f),
@@ -257,7 +256,7 @@ private fun DcSummaryTable(
                     if (testing) {
                         Text(
                             text = "测试中...",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
@@ -267,7 +266,7 @@ private fun DcSummaryTable(
                         ) {
                             Text(
                                 text = if (dc.colo in testedDcs) "重新测试" else "选择测试",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
                     }

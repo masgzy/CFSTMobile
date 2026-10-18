@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.EdgetunnelClient
 import com.masgzy.cfstmobile.data.EdgetunnelStore
@@ -153,7 +152,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
         ) {
             Text(
                 text = "导出与上传（共 ${results.size} 条）",
-                fontSize = 18.sp,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
 
@@ -185,7 +184,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 } else {
                     "列序对齐 XIU2/CloudflareST result.csv，便于表格工具对表"
                 },
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -197,7 +196,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     label = { Text("开始行") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 13.sp),
+                    textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
                 )
                 OutlinedTextField(
                     value = endRowText,
@@ -205,7 +204,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     label = { Text("结束行(0=末尾)") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 13.sp),
+                    textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
                 )
             }
             // IP 类型筛选
@@ -231,7 +230,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                         onClick = {
                             fieldOrder = if (f in fieldOrder) fieldOrder - f else fieldOrder + f
                         },
-                        label = { Text(f.label, fontSize = 11.sp, maxLines = 1) },
+                        label = { Text(f.label, style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                     )
                 }
             }
@@ -247,12 +246,12 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                         label = { Text("TXT 分隔符") },
                         modifier = Modifier.width(150.dp),
                         singleLine = true,
-                        textStyle = TextStyle(fontSize = 13.sp),
+                        textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
                     )
                     FilterChip(
                         selected = ipv6Brackets,
                         onClick = { ipv6Brackets = !ipv6Brackets },
-                        label = { Text("IPv6 方括号", fontSize = 11.sp, maxLines = 1) },
+                        label = { Text("IPv6 方括号", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                     )
                 }
             }
@@ -265,7 +264,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 Text(
                     text = preview,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
@@ -296,7 +295,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
             }
             Text(
                 text = "写入 edgetunnel（CM 系 Worker）订阅 ADD.txt，协议与 CFData-WEB 一致",
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -358,19 +357,19 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 value = etName,
                 onValueChange = { etName = it },
                 label = { Text("账户名称") },
-                placeholder = { Text("例如 main-tunnel", fontSize = 12.sp) },
+                placeholder = { Text("例如 main-tunnel", style = MaterialTheme.typography.bodySmall) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
             OutlinedTextField(
                 value = etHost,
                 onValueChange = { etHost = it },
                 label = { Text("edgetunnel 域名") },
-                placeholder = { Text("https://example.com", fontSize = 12.sp) },
+                placeholder = { Text("https://example.com", style = MaterialTheme.typography.bodySmall) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
             OutlinedTextField(
                 value = etPassword,
@@ -379,14 +378,14 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(text = "保存密码到应用私有存储", fontSize = 13.sp)
+                Text(text = "保存密码到应用私有存储", style = MaterialTheme.typography.bodyMedium)
                 Switch(
                     checked = etSavePassword,
                     onCheckedChange = { etSavePassword = it },
@@ -475,7 +474,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
 
             Text(
                 text = etStatus,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = when (etStatusOk) {
                     true -> MaterialTheme.colorScheme.primary
                     false -> MaterialTheme.colorScheme.error
@@ -604,7 +603,7 @@ private fun GithubSection(
         }
         Text(
             text = "把优选结果提交到 GitHub 仓库，raw 直链可分享/订阅；Token 需该仓库 Contents 写权限",
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -615,7 +614,7 @@ private fun GithubSection(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            textStyle = TextStyle(fontSize = 13.sp),
+            textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -624,7 +623,7 @@ private fun GithubSection(
                 label = { Text("属主 owner") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
             OutlinedTextField(
                 value = ghRepo,
@@ -632,7 +631,7 @@ private fun GithubSection(
                 label = { Text("仓库 repo") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -642,7 +641,7 @@ private fun GithubSection(
                 label = { Text("分支") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
             OutlinedTextField(
                 value = ghPath,
@@ -650,7 +649,7 @@ private fun GithubSection(
                 label = { Text("文件路径") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
+                textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
             )
         }
         OutlinedTextField(
@@ -659,14 +658,14 @@ private fun GithubSection(
             label = { Text("提交信息") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            textStyle = TextStyle(fontSize = 13.sp),
+            textStyle = TextStyle(style = MaterialTheme.typography.bodyMedium),
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "保存 Token 到应用私有存储", fontSize = 13.sp)
+            Text(text = "保存 Token 到应用私有存储", style = MaterialTheme.typography.bodyMedium)
             Switch(checked = ghSaveToken, onCheckedChange = onSaveToken)
         }
         OutlinedButton(onClick = onSaveConfig, modifier = Modifier.fillMaxWidth()) {
@@ -683,7 +682,7 @@ private fun GithubSection(
         }
         Text(
             text = ghStatus,
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
             color = when (ghStatusOk) {
                 true -> MaterialTheme.colorScheme.primary
                 false -> MaterialTheme.colorScheme.error

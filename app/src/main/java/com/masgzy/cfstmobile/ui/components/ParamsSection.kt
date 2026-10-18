@@ -39,7 +39,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.BUILT_IN_IPS_V6
 import com.masgzy.cfstmobile.data.SpeedUrlPresets
@@ -251,7 +250,7 @@ private fun CompactSection(
                 } else {
                     "按 /24 子网探测 TCP:80，仅保留活跃子网"
                 },
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
@@ -262,7 +261,7 @@ private fun CompactSection(
                     Spacer(Modifier.weight(1f))
                     Text(
                         text = "第 ${compactState.pass} 轮 · 保留 ${compactState.found} 个",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
@@ -274,7 +273,7 @@ private fun CompactSection(
                     if (compactState.doneCount != null) {
                         Text(
                             text = "已保留 ${compactState.doneCount} 个子网",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -295,7 +294,7 @@ private fun CompactSection(
                     Text(
                         text = compactState.status.ifEmpty { "精简准备中" } +
                             (if (compactState.stopRequested) " · 正在停止…" else ""),
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -309,7 +308,7 @@ private fun CompactSection(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = compactState.message.orEmpty(),
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -353,7 +352,7 @@ private fun NonStdParams(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = settings.nsbFileName.ifEmpty { "未选择文件（txt/csv）" },
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // 与下方/相邻 TextField 内容文字对齐（M3 TextField 内容有 16dp 起始内边距，
@@ -562,7 +561,7 @@ private fun SharedParams(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = if (settings.pingMode == UiSettings.PING_HTTP) SCAN_HINT_HTTP else SCAN_HINT_TCP,
-                fontSize = 10.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -669,7 +668,7 @@ private fun AdvancedParams(
         Spacer(Modifier.width(4.dp))
         Text(
             text = "高级参数",
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -691,7 +690,7 @@ private fun AdvancedParams(
                         } else {
                             "已选 ${settings.selectedSegments.size} / 15 段"
                         },
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -800,10 +799,10 @@ private fun SwitchItem(label: String, hint: String, checked: Boolean, onChecked:
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = label, fontSize = 13.sp)
+            Text(text = label, style = MaterialTheme.typography.bodyMedium)
             Text(
                 text = hint,
-                fontSize = 10.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
