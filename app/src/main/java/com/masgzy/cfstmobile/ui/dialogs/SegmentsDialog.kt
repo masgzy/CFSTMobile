@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.data.BUILT_IN_IPS
 
 /**
@@ -52,7 +51,7 @@ fun SegmentsDialog(
                 ) {
                     Text(
                         text = "共 ${BUILT_IN_IPS.size} 个，已选 ${checked.size} 个",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row {
@@ -80,7 +79,7 @@ fun SegmentsDialog(
                                         checked = if (isChecked) checked + segment else checked - segment
                                     },
                                 )
-                                Text(text = segment, fontSize = 13.sp)
+                                Text(text = segment, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }

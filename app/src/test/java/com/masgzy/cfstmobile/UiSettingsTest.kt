@@ -6,6 +6,7 @@ import com.masgzy.cfstmobile.data.SpeedUrlPresets
 import com.masgzy.cfstmobile.data.UiSettings
 import com.masgzy.cfstmobile.model.ProtocolJson
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -273,5 +274,20 @@ class UiSettingsTest {
     fun `sanitized empty input is no-op`() {
         val s = UiSettings()
         assertEquals(s, s.sanitized())
+    }
+
+    // ---------------------------------------------------------------- 外观设置（amoled）
+
+    @Test
+    fun `amoled defaults to false and participates in copy`() {
+        val s = UiSettings()
+        assertFalse(s.amoled)
+        assertTrue(s.copy(amoled = true).amoled)
+    }
+
+    @Test
+    fun `amoled survives sanitized roundtrip`() {
+        val s = UiSettings(amoled = true)
+        assertTrue(s.sanitized().amoled)
     }
 }

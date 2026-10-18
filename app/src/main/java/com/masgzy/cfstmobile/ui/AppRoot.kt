@@ -2,15 +2,16 @@ package com.masgzy.cfstmobile.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,17 +29,24 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,10 +59,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.masgzy.cfstmobile.BuildConfig
 import com.masgzy.cfstmobile.R
@@ -73,14 +82,21 @@ import com.masgzy.cfstmobile.ui.dialogs.HistoryDialog
 import com.masgzy.cfstmobile.viewmodel.TestUiState
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
+/** 触感反馈（M3 推荐的选择类轻触感，minSdk 24 可用） */
+internal fun android.view.View.tickHaptic() {
+    performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+}
+
 /**
- * 应用根（完全 Material You）：
- * LargeTopAppBar（滚动折叠：CFSTMobile 主标题 + 版本号副行 + 右上操作）→
+ * 应用根（完全 Material You + Expressive）：
+ * LargeFlexibleTopAppBar（Expressive 弹性大顶栏：主标题 + 版本 subtitle + 右上操作）→
  * 状态横幅 → 模式切换（SegmentedButton）→ 参数卡 → 开始按钮 → 进度条 →
  * 结果区（官方双 Tab：扫描/详细测试）→ 终端日志。
+ * 外观设置走 ModalBottomSheet（M3 底部弹层：颜色模式/动态取色/AMOLED）。
+ * 全部过渡动效接入 MaterialTheme.motionScheme（官方 Expressive spring 参数）。
  * 非标模式隐藏详细测试 Tab（对齐 CFData switchMode）。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppRoot(viewModel: TestViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -90,10 +106,13 @@ fun AppRoot(viewModel: TestViewModel) {
     val scanRows by viewModel.scanRows.collectAsStateWithLifecycle()
     val compactState by viewModel.compactState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val view = LocalView.current
 
     var showExport by remember { mutableStateOf(false) }
     var scanTab by rememberSaveable { mutableStateOf(true) }
     val official = settings.ipSource == UiSettings.SOURCE_BUILTIN
+    // transitionSpec lambda 非 @Composable 上下文，motionScheme 须在组合期先捕获
+    val motion = MaterialTheme.motionScheme
 
     LaunchedEffect(viewModel) {
         viewModel.toast.collect { message ->
@@ -112,27 +131,11 @@ fun AppRoot(viewModel: TestViewModel) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "CFSTMobile",
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = "v${BuildConfig.VERSION_NAME}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+            LargeFlexibleTopAppBar(
+                title = { Text("CFSTMobile") },
+                subtitle = { Text("v${BuildConfig.VERSION_NAME}") },
                 actions = { TopActions(viewModel, settings) },
                 scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
             )
         },
     ) { padding ->
@@ -159,8 +162,14 @@ fun AppRoot(viewModel: TestViewModel) {
                     leftLabel = "官方优选",
                     rightLabel = "非标优选",
                     leftSelected = official,
-                    onLeft = { scanTab = true; viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_BUILTIN) } },
-                    onRight = { scanTab = true; viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_CUSTOM) } },
+                    onLeft = {
+                        scanTab = true
+                        viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_BUILTIN) }
+                    },
+                    onRight = {
+                        scanTab = true
+                        viewModel.updateSettings { it.copy(ipSource = UiSettings.SOURCE_CUSTOM) }
+                    },
                 )
             }
 
@@ -177,20 +186,30 @@ fun AppRoot(viewModel: TestViewModel) {
                 )
             }
 
-            // ---------------- 开始按钮（开始/停止切换带淡入淡出） ----------------
+            // ---------------- 开始按钮（开始/停止切换，spring 形变） ----------------
             item(key = "start") {
                 AnimatedContent(
                     targetState = uiState.isRunning,
                     transitionSpec = {
-                        (fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220)))
-                            .togetherWith(fadeOut(animationSpec = tween(160)) + scaleOut(targetScale = 0.96f, animationSpec = tween(160)))
+                        (fadeIn(animationSpec = motion.fastEffectsSpec()) +
+                            scaleIn(
+                                initialScale = 0.92f,
+                                animationSpec = motion.fastSpatialSpec(),
+                            ))
+                            .togetherWith(
+                                fadeOut(animationSpec = motion.fastEffectsSpec()) +
+                                    scaleOut(
+                                        targetScale = 0.96f,
+                                        animationSpec = motion.fastEffectsSpec(),
+                                    ),
+                            )
                     },
                     label = "startButton",
                 ) { running ->
                     if (running) {
                         PrimaryButton(
                             text = if (uiState.stopRequested) "正在停止…" else "停止测试",
-                            onClick = viewModel::stopTest,
+                            onClick = { view.tickHaptic(); viewModel.stopTest() },
                             icon = R.drawable.ic_sym_stop,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error,
@@ -200,7 +219,7 @@ fun AppRoot(viewModel: TestViewModel) {
                     } else {
                         PrimaryButton(
                             text = "开始扫描与测试",
-                            onClick = viewModel::startTest,
+                            onClick = { view.tickHaptic(); viewModel.startTest() },
                             icon = R.drawable.ic_sym_play_arrow,
                         )
                     }
@@ -212,7 +231,7 @@ fun AppRoot(viewModel: TestViewModel) {
                 item(key = "progress") { ProgressBarLine(uiState) }
             }
 
-            // ---------------- 结果区（官方双 Tab；非标只有扫描结果；切换带淡入滑动） ----------------
+            // ---------------- 结果区（官方双 Tab；非标只有扫描结果；切换带滑动+淡入） ----------------
             if (official) {
                 item(key = "tabs") {
                     CfTabs(
@@ -229,9 +248,11 @@ fun AppRoot(viewModel: TestViewModel) {
                     targetState = if (!official) "scan" else if (scanTab) "scan" else "dc",
                     transitionSpec = {
                         val dir = if (targetState == "dc") 1 else -1
-                        (fadeIn(animationSpec = tween(220)) +
-                            slideInVertically(animationSpec = tween(220)) { it / 24 * dir })
-                            .togetherWith(fadeOut(animationSpec = tween(150)))
+                        (fadeIn(animationSpec = motion.fastEffectsSpec()) +
+                            slideInVertically(
+                                animationSpec = motion.defaultSpatialSpec<IntOffset>(),
+                            ) { it / 24 * dir })
+                            .togetherWith(fadeOut(animationSpec = motion.fastEffectsSpec()))
                     },
                     label = "resultTabs",
                 ) { which ->
@@ -266,12 +287,13 @@ fun AppRoot(viewModel: TestViewModel) {
 
 // ---------------------------------------------------------------- 头部操作
 
-/** 右上操作排：GitHub / 配置菜单 / 设置菜单 */
+/** 右上操作排：外观 / GitHub / 配置菜单 / 设置菜单 */
 @Composable
 private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
     var showSettingsMenu by remember { mutableStateOf(false) }
     var showConfigMenu by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showAppearance by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -302,7 +324,10 @@ private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
                 expanded = showSettingsMenu,
                 onDismiss = { showSettingsMenu = false },
                 viewModel = viewModel,
-                settings = settings,
+                onOpenAppearance = {
+                    showSettingsMenu = false
+                    showAppearance = true
+                },
                 onOpenHistory = {
                     showSettingsMenu = false
                     showHistory = true
@@ -311,8 +336,105 @@ private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
         }
     }
 
+    if (showAppearance) {
+        AppearanceSheet(
+            settings = settings,
+            viewModel = viewModel,
+            onDismiss = { showAppearance = false },
+        )
+    }
     if (showHistory) {
         HistoryDialog(viewModel = viewModel, onDismiss = { showHistory = false })
+    }
+}
+
+// ---------------------------------------------------------------- 外观设置（M3 底部弹层）
+
+/**
+ * 外观设置底部弹层（M3 ModalBottomSheet，对齐 ImageToolbox 等 Material You 标杆应用的设置交互）：
+ * 颜色模式三选（SegmentedButton）/ 动态取色开关 / AMOLED 纯黑开关。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AppearanceSheet(
+    settings: UiSettings,
+    viewModel: TestViewModel,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val darkNow = settings.themeMode == UiSettings.THEME_DARK ||
+        (settings.themeMode == UiSettings.THEME_AUTO && isSystemInDarkTheme())
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("外观", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "Material You 个性化：跟随壁纸取色与明暗偏好",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // 颜色模式（自动 / 浅色 / 深色）
+            Text(
+                text = "颜色模式",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = settings.themeMode == UiSettings.THEME_AUTO,
+                    onClick = { viewModel.updateSettings { it.copy(themeMode = UiSettings.THEME_AUTO) } },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                ) { Text("自动") }
+                SegmentedButton(
+                    selected = settings.themeMode == UiSettings.THEME_LIGHT,
+                    onClick = { viewModel.updateSettings { it.copy(themeMode = UiSettings.THEME_LIGHT) } },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                ) { Text("浅色") }
+                SegmentedButton(
+                    selected = settings.themeMode == UiSettings.THEME_DARK,
+                    onClick = { viewModel.updateSettings { it.copy(themeMode = UiSettings.THEME_DARK) } },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                ) { Text("深色") }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            ListItem(
+                headlineContent = { Text("动态取色（Material You）") },
+                supportingContent = { Text("Android 12+ 跟随壁纸取色，关闭则用 Cloudflare 蓝品牌色") },
+                trailingContent = {
+                    Switch(
+                        checked = settings.dynamicColors,
+                        onCheckedChange = { checked ->
+                            viewModel.updateSettings { it.copy(dynamicColors = checked) }
+                        },
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            ListItem(
+                headlineContent = { Text("AMOLED 纯黑深色") },
+                supportingContent = { if (darkNow) Text("深色下表面转纯黑，OLED 更省电") else Text("需先切到深色模式") },
+                trailingContent = {
+                    Switch(
+                        checked = settings.amoled,
+                        enabled = darkNow,
+                        onCheckedChange = { checked ->
+                            viewModel.updateSettings { it.copy(amoled = checked) }
+                        },
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -323,43 +445,20 @@ private fun SettingsMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     viewModel: TestViewModel,
-    settings: UiSettings,
+    onOpenAppearance: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        Text(
-            text = "颜色模式",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        )
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            ThemeModeButton("浅色", settings.themeMode == UiSettings.THEME_LIGHT) {
-                viewModel.updateSettings { it.copy(themeMode = UiSettings.THEME_LIGHT) }
-            }
-            ThemeModeButton("深色", settings.themeMode == UiSettings.THEME_DARK) {
-                viewModel.updateSettings { it.copy(themeMode = UiSettings.THEME_DARK) }
-            }
-            ThemeModeButton("自动", settings.themeMode == UiSettings.THEME_AUTO) {
-                viewModel.updateSettings { it.copy(themeMode = UiSettings.THEME_AUTO) }
-            }
-        }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
         DropdownMenuItem(
-            text = { Text("动态取色（Material You）") },
-            trailingIcon = {
-                Switch(
-                    checked = settings.dynamicColors,
-                    onCheckedChange = { checked ->
-                        viewModel.updateSettings { it.copy(dynamicColors = checked) }
-                    },
+            text = { Text("外观") },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sym_palette),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
                 )
             },
-            onClick = { viewModel.updateSettings { it.copy(dynamicColors = !it.dynamicColors) } },
+            onClick = onOpenAppearance,
         )
         DropdownMenuItem(
             text = { Text("历史记录") },
@@ -387,22 +486,6 @@ private fun SettingsMenu(
                 onDismiss()
                 viewModel.resetSettings()
             },
-        )
-    }
-}
-
-@Composable
-private fun ThemeModeButton(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
         )
     }
 }
@@ -518,7 +601,7 @@ private fun ProgressBarLine(state: TestUiState) {
         Spacer(Modifier.width(10.dp))
         Text(
             text = if (frac != null) "${(frac * 100).toInt()}%" else "…",
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -546,7 +629,7 @@ private fun MockBanner() {
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "演示模式：未检测到 libcfst.so，当前展示为模拟数据",
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
         }

@@ -2,7 +2,6 @@ package com.masgzy.cfstmobile.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -59,8 +58,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.R
+import com.masgzy.cfstmobile.ui.tickHaptic
 import com.masgzy.cfstmobile.ui.theme.CfGreen
 import com.masgzy.cfstmobile.ui.theme.LogBg
 import com.masgzy.cfstmobile.ui.theme.LogBorder
@@ -79,6 +79,9 @@ import com.masgzy.cfstmobile.ui.theme.OkGreen
  * 状态横幅 / 模式切换（SegmentedButton）/ 参数卡（M3 Card）/ option-item /
  * 下拉选择 / 徽章 / 语义绿操作按钮 / 终端日志面板 / 结果 Tab（M3 TabRow）。
  * 颜色全部走 MaterialTheme 语义槽位（动态取色随壁纸），
+ * 文字走 M3 typography 角色令牌（titleMedium/labelLarge/bodyMedium…），
+ * 动效走 MaterialTheme.motionScheme（官方 Expressive spring 参数），
+ * 选择类交互附带轻触感反馈。
  * 仅语义色（成功绿/日志深底）固定不变。
  */
 
@@ -89,16 +92,18 @@ internal val M3ItemShape = RoundedCornerShape(14.dp)
 
 // ---------------------------------------------------------------- 状态横幅
 
-/** 状态横幅：M3 tonal 面（语义色着色），ok=绿 / busy=主色 / error=红；状态切换带颜色渐变与文字淡入 */
+/** 状态横幅：M3 tonal 面（语义色着色），ok=绿 / busy=主色 / error=红；
+ *  状态切换颜色走 effects spring（无过冲）、文字淡入淡出走 fast effects */
 @Composable
 fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier) {
+    val motion = MaterialTheme.motionScheme
     val targetAccent = when (state) {
         BannerState.OK -> OkGreen
         BannerState.BUSY -> MaterialTheme.colorScheme.primary
         BannerState.ERROR -> MaterialTheme.colorScheme.error
     }
-    // 语义色切换用 350ms 渐变（M3 推荐的中等时长 easing），避免颜色跳变
-    val accent by animateColorAsState(targetAccent, tween(durationMillis = 350), label = "bannerAccent")
+    // 语义色切换用 effects spring（M3 Expressive 默认，1.0 阻尼无过冲），避免颜色跳变
+    val accent by animateColorAsState(targetAccent, motion.defaultEffectsSpec(), label = "bannerAccent")
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = M3ItemShape,
@@ -119,13 +124,13 @@ fun StatusBanner(text: String, state: BannerState, modifier: Modifier = Modifier
             AnimatedContent(
                 targetState = text,
                 transitionSpec = {
-                    fadeIn(tween(200)) togetherWith fadeOut(tween(140))
+                    fadeIn(motion.fastEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
                 },
                 label = "bannerText",
             ) { value ->
                 Text(
                     text = value,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     color = accent,
                     maxLines = 1,
@@ -140,7 +145,7 @@ enum class BannerState { OK, BUSY, ERROR }
 
 // ---------------------------------------------------------------- 模式切换
 
-/** 模式切换（M3 SingleChoiceSegmentedButtonRow） */
+/** 模式切换（M3 SingleChoiceSegmentedButtonRow，labelLarge 令牌 + 选择触感） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModeSwitch(
@@ -151,20 +156,21 @@ fun ModeSwitch(
     onRight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val view = LocalView.current
     SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
         SegmentedButton(
             selected = leftSelected,
-            onClick = onLeft,
+            onClick = { view.tickHaptic(); onLeft() },
             shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
         ) {
-            Text(leftLabel, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(leftLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
         }
         SegmentedButton(
             selected = !leftSelected,
-            onClick = onRight,
+            onClick = { view.tickHaptic(); onRight() },
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
         ) {
-            Text(rightLabel, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(rightLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
@@ -188,12 +194,12 @@ fun ParamsCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
             if (hint != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = hint,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -235,7 +241,7 @@ fun OptionItem(
             }
             Text(
                 text = label,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -283,8 +289,8 @@ fun CfDropdown(
             enabled = enabled,
             singleLine = true,
             label = null,
-            placeholder = { if (label != null) Text(label, fontSize = 13.sp, maxLines = 1) },
-            textStyle = TextStyle(fontSize = 14.sp),
+            placeholder = { if (label != null) Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1) },
+            textStyle = MaterialTheme.typography.bodyMedium,
             shape = M3FieldShape,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
@@ -312,14 +318,14 @@ fun CfDropdown(
                 if (option.header) {
                     Text(
                         text = option.label,
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     )
                 } else {
                     DropdownMenuItem(
-                        text = { Text(option.label, fontSize = 14.sp) },
+                        text = { Text(option.label, style = MaterialTheme.typography.bodyMedium) },
                         onClick = {
                             onSelect(option)
                             expanded = false
@@ -354,8 +360,8 @@ fun CfTextField(
         singleLine = singleLine,
         minLines = minLines,
         maxLines = maxLines,
-        placeholder = { if (placeholder != null) Text(placeholder, fontSize = 13.sp, maxLines = 1) },
-        textStyle = TextStyle(fontSize = 14.sp),
+        placeholder = { if (placeholder != null) Text(placeholder, style = MaterialTheme.typography.bodyMedium, maxLines = 1) },
+        textStyle = MaterialTheme.typography.bodyMedium,
         shape = M3FieldShape,
         keyboardOptions = KeyboardOptions(
             keyboardType = if (number) KeyboardType.Number else KeyboardType.Text,
@@ -399,7 +405,7 @@ fun GreenButton(
             Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text = text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(text = text, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -424,7 +430,7 @@ fun PrimaryButton(
             Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text = text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(text = text, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -439,7 +445,7 @@ fun CountBadge(count: Int, modifier: Modifier = Modifier) {
         Text(
             text = count.toString(),
             color = MaterialTheme.colorScheme.onPrimary,
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
         )
@@ -448,7 +454,7 @@ fun CountBadge(count: Int, modifier: Modifier = Modifier) {
 
 // ---------------------------------------------------------------- 结果 Tab
 
-/** 结果双 Tab（M3 TabRow + SecondaryIndicator） */
+/** 结果双 Tab（M3 TabRow + SecondaryIndicator，titleSmall 令牌 + 选择触感） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CfTabs(
@@ -459,6 +465,7 @@ fun CfTabs(
     onRight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val view = LocalView.current
     TabRow(
         selectedTabIndex = if (leftSelected) 0 else 1,
         modifier = modifier.fillMaxWidth(),
@@ -475,15 +482,15 @@ fun CfTabs(
     ) {
         Tab(
             selected = leftSelected,
-            onClick = onLeft,
-            text = { Text(leftLabel, fontWeight = FontWeight.Bold) },
+            onClick = { view.tickHaptic(); onLeft() },
+            text = { Text(leftLabel, style = MaterialTheme.typography.titleSmall) },
             selectedContentColor = MaterialTheme.colorScheme.primary,
             unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Tab(
             selected = !leftSelected,
-            onClick = onRight,
-            text = { Text(rightLabel, fontWeight = FontWeight.Bold) },
+            onClick = { view.tickHaptic(); onRight() },
+            text = { Text(rightLabel, style = MaterialTheme.typography.titleSmall) },
             selectedContentColor = MaterialTheme.colorScheme.primary,
             unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -557,7 +564,7 @@ fun ScrollTable(
             columns.forEachIndexed { index, col ->
                 Text(
                     text = col,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.width(columnWidths[index]),
@@ -574,7 +581,7 @@ fun ScrollTable(
             ) {
                 Text(
                     text = "暂无结果",
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -594,7 +601,7 @@ fun ScrollTable(
                         cells.forEachIndexed { cellIndex, cell ->
                             Text(
                                 text = cell,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.width(columnWidths[cellIndex]),
@@ -635,7 +642,7 @@ fun CfTable(
             columns.forEach { col ->
                 Text(
                     text = col,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -650,7 +657,7 @@ fun CfTable(
             ) {
                 Text(
                     text = "暂无结果",
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -669,7 +676,7 @@ fun CfTable(
                         cells.forEach { cell ->
                             Text(
                                 text = cell,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),

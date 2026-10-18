@@ -130,6 +130,8 @@ data class UiSettings(
     val themeMode: String = THEME_AUTO,
     /** Material You 动态取色（Android 12+ 跟随壁纸；关闭则用 Cloudflare 蓝品牌色） */
     val dynamicColors: Boolean = true,
+    /** AMOLED 纯黑深色（仅深色模式下生效，表面/容器转纯黑系） */
+    val amoled: Boolean = false,
     /** 启动时自动加载已保存配置 */
     val autoLoadConfig: Boolean = false,
 ) {

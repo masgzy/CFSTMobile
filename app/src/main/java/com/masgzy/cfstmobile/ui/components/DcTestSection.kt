@@ -27,7 +27,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.DcSortKey
 import com.masgzy.cfstmobile.data.DcStep
@@ -87,7 +86,7 @@ private fun DcIdle(hasResults: Boolean, onStart: () -> Unit) {
         Text(
             text = "对本次测速结果按数据中心聚合，点选 DC 后对其全部 IP 做二次详细测试\n" +
                 "（tcping×10 / httping×3 统计 min/avg/max/丢包，随后自动下载测速）",
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
@@ -103,7 +102,7 @@ private fun DcIdle(hasResults: Boolean, onStart: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 text = "暂无测速结果，先完成一次扫描",
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -120,13 +119,13 @@ private fun DcProbing(state: DcTestUiState, onCancel: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Text(
             text = "正在识别数据中心归属（${state.probeDone}/${state.probeTotal}）",
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(6.dp))
         Text(
             text = "通过 speed.cloudflare.com/cdn-cgi/trace 获取每个 IP 所在的数据中心",
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
@@ -143,7 +142,7 @@ private fun DcError(state: DcTestUiState, onRetry: () -> Unit) {
     ) {
         Text(
             text = state.message ?: "数据中心测试失败",
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.error,
         )
@@ -181,21 +180,21 @@ private fun DcResults(
     Column(modifier = Modifier.fillMaxWidth()) {
         // ---------------- 标题行（对齐 h3：标题 + badge + currentTestDC） ----------------
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("详细测试结果", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("详细测试结果", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             CountBadge(visible.size)
             Spacer(Modifier.weight(1f))
             if (state.step == DcStep.TESTING) {
                 Text(
                     text = "测试中: ${state.selectedDc ?: "-"}（${state.testDone}/${state.testTotal}）",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
             } else if (state.selectedDc != null) {
                 Text(
                     text = state.message ?: "数据中心 ${state.selectedDc}",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
@@ -220,7 +219,7 @@ private fun DcResults(
             )
             Text(
                 text = "下载测速中 ${state.speedBatchDone}/${state.speedBatchTotal}（自动阶段）",
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
         }
