@@ -23,8 +23,8 @@ android {
         // 引擎 .so 以 --platform 24 交叉编译，二者保持一致
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.0-alpha.4"
+        versionCode = 5
+        versionName = "0.1.0-alpha.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
