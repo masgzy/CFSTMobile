@@ -34,6 +34,19 @@ data class DcTestItem(
     fun address(): String = "$ip:$port"
 }
 
+/** DcTestItem → CfstResultItem（导出弹窗数据源映射：延迟=avg，received 按 lossRate 折算） */
+fun DcTestItem.toExportItem(): com.masgzy.cfstmobile.model.CfstResultItem =
+    com.masgzy.cfstmobile.model.CfstResultItem(
+        ip = ip,
+        port = port,
+        sent = attempts,
+        received = (attempts * (1.0 - lossRate)).toInt(),
+        lossRate = lossRate,
+        delayMs = avgMs,
+        downloadSpeedMbps = speedMbps,
+        colo = colo.ifEmpty { null },
+    )
+
 /** 扫描结果行（对齐 CFData 官方扫描表：IP/端口/数据中心/落地区域/地区/城市/扫描方式/延迟） */
 data class ScanRow(
     val ip: String,

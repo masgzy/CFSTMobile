@@ -66,10 +66,8 @@ data class SeedColors(
 data class UiSettings(
     /** IP 来源：内置段（官方优选）/ 自定义目标（非标优选） */
     val ipSource: String = SOURCE_BUILTIN,
-    /** 官方优选 IP 类型："4" / "6"（决定内置段用 v4 选择集还是官方 v6 全集） */
+    /** 官方优选 IP 类型："4" / "6"（决定地址库用 v4 还是 v6） */
     val ipType: String = IP_V4,
-    /** 官方 v4 段选择集（高级参数内维护，默认官方全集） */
-    val selectedSegments: List<String> = BUILT_IN_IPS,
 
     // ---------------- 非标输入源（文件 / URL 二选一，手动列表为 App 补充） ----------------
     /** 手动目标列表（每行一个：CIDR / IP[:端口] / 域名[:端口]） */
@@ -163,9 +161,9 @@ data class UiSettings(
 ) {
     val official: Boolean get() = ipSource == SOURCE_BUILTIN
 
-    /** 官方模式实际使用的内置段（v4 用选择集，v6 用官方全集） */
-    val effectiveSegments: List<String>
-        get() = if (ipType == IP_V6) BUILT_IN_IPS_V6 else selectedSegments
+    /** 官方模式离线回退段（在线地址库不可用时的内置官方全集） */
+    val fallbackSegments: List<String>
+        get() = if (ipType == IP_V6) BUILT_IN_IPS_V6 else BUILT_IN_IPS
 
     /** 当前模式是否做下载测速（测速结果数量 > 0 且自动测速开关放行；非标还要求测速并发 > 0，
      *  对齐 CFData「需测速并发与测速结果数量均大于 0」） */
@@ -200,13 +198,11 @@ data class UiSettings(
     /**
      * 组装引擎配置载荷（未填字段交给引擎默认值/校验）。
      * [extraTargets]：非标模式从网络 URL 实时拉取的目标行（与文件/手动列表合并）。
+     * 官方模式的 IP 列表由 OfficialIpList 展开后走 ipFile（对齐 CFData 地址库），
+     * 本方法不再携带官方 CIDR 段。
      */
     fun toCfstConfig(extraTargets: List<String> = emptyList()): CfstConfig = CfstConfig(
-        ipText = if (official) {
-            effectiveSegments.joinToString(",")
-        } else {
-            (nsbTargets + extraTargets).joinToString(",")
-        },
+        ipText = if (official) "" else (nsbTargets + extraTargets).joinToString(","),
         tcpPort = enginePort,
         pingMode = pingMode,
         httpingUrl = httpingUrl.trim().ifBlank { null },
@@ -231,7 +227,6 @@ data class UiSettings(
     fun validate(): String? = when {
         enginePort !in 1..65535 ->
             if (official) "测试端口必须在 1~65535 之间" else "备用端口必须在 1~65535 之间"
-        official && ipType == IP_V4 && selectedSegments.isEmpty() -> "请至少选择一个内置 IP 段"
         !official && nsbSourceUrl.isNotBlank() && nsbFileText.isNotBlank() ->
             "IP 文件与网络 URL 请二选一（对齐 CFData 输入约束）"
         !official && nsbSourceUrl.isBlank() && nsbFileText.isBlank() && customIpText.isBlank() ->

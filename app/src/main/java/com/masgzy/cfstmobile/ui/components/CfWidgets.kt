@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -547,6 +549,8 @@ fun ScrollTable(
     columnWidths: List<androidx.compose.ui.unit.Dp> = List(columns.size) { 88.dp },
     maxHeight: androidx.compose.ui.unit.Dp = 320.dp,
     onRowClick: ((Int) -> Unit)? = null,
+    cellColors: List<List<Color?>>? = null,
+    onCellClick: ((row: Int, col: Int) -> Unit)? = null,
 ) {
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
@@ -600,12 +604,28 @@ fun ScrollTable(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         cells.forEachIndexed { cellIndex, cell ->
+                            // 单元格级点击（对齐 CFData：仅 IP/端口可点复制）优先于整行
+                            val cellClickable = onCellClick != null
                             Text(
                                 text = cell,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.width(columnWidths[cellIndex]),
+                                fontWeight = if (cellColors != null) FontWeight.SemiBold else null,
+                                color = cellColors?.getOrNull(index)?.getOrNull(cellIndex)
+                                    ?: MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .width(columnWidths[cellIndex])
+                                    .let { m ->
+                                        if (cellClickable) {
+                                            m.clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = ripple(),
+                                            ) { onCellClick?.invoke(index, cellIndex) }
+                                        } else {
+                                            m
+                                        }
+                                    },
                             )
                         }
                     }

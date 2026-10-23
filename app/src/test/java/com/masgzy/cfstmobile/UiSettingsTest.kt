@@ -17,25 +17,22 @@ class UiSettingsTest {
     // ---------------------------------------------------------------- 内置段
 
     @Test
-    fun `ipType v4 uses selected segments`() {
-        val s = UiSettings(ipType = UiSettings.IP_V4, selectedSegments = BUILT_IN_IPS.take(3))
-        assertEquals(BUILT_IN_IPS.take(3), s.effectiveSegments)
+    fun `fallback segments follow ip type`() {
+        // 地址库化后：内置段仅作为离线回退（OfficialIpList.fetchContent 失败时）
+        val s = UiSettings(ipType = UiSettings.IP_V4)
+        assertEquals(BUILT_IN_IPS, s.fallbackSegments)
+        assertEquals(BUILT_IN_IPS_V6, s.copy(ipType = UiSettings.IP_V6).fallbackSegments)
     }
 
     @Test
-    fun `ipType v6 uses official v6 ranges regardless of selection`() {
-        val s = UiSettings(ipType = UiSettings.IP_V6, selectedSegments = emptyList())
-        assertEquals(BUILT_IN_IPS_V6, s.effectiveSegments)
-    }
-
-    @Test
-    fun `v6 config ip_text contains v6 cidr`() {
-        val s = UiSettings(ipType = UiSettings.IP_V6)
+    fun `official config no longer carries cidr in ip_text`() {
+        // 官方模式 IP 列表改由 OfficialIpList 展开后走 ip_file（对齐 CFData 地址库），
+        // 引擎载荷不再携带官方 CIDR 段
         val json = ProtocolJson.json.encodeToString(
             com.masgzy.cfstmobile.model.CfstConfig.serializer(),
-            s.toCfstConfig(),
+            UiSettings(ipType = UiSettings.IP_V6).toCfstConfig(),
         )
-        assertTrue(json.contains("2400:cb00::/32"))
+        assertFalse(json.contains("2400:cb00::/32"))
     }
 
     // ---------------------------------------------------------------- 分模式映射
@@ -204,17 +201,10 @@ class UiSettingsTest {
     // ---------------------------------------------------------------- 校验
 
     @Test
-    fun `validate v6 skips segment requirement`() {
-        assertNull(
-            UiSettings(
-                ipType = UiSettings.IP_V6,
-                selectedSegments = emptyList(),
-            ).validate(),
-        )
-        assertEquals(
-            "请至少选择一个内置 IP 段",
-            UiSettings(ipType = UiSettings.IP_V4, selectedSegments = emptyList()).validate(),
-        )
+    fun `validate official has no segment requirement anymore`() {
+        // 官方模式不再有段选择：离线回退内置段，无网时也能展开，因此校验恒通过
+        assertNull(UiSettings(ipType = UiSettings.IP_V4).validate())
+        assertNull(UiSettings(ipType = UiSettings.IP_V6).validate())
     }
 
     @Test

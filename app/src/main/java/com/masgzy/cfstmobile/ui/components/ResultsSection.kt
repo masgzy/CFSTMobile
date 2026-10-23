@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import com.masgzy.cfstmobile.R
 import com.masgzy.cfstmobile.data.DcInfo
 import com.masgzy.cfstmobile.data.DcStep
@@ -34,6 +35,8 @@ import com.masgzy.cfstmobile.data.DcTestUiState
 import com.masgzy.cfstmobile.data.ScanRow
 import com.masgzy.cfstmobile.data.UiSettings
 import com.masgzy.cfstmobile.ui.theme.delayColor
+import com.masgzy.cfstmobile.ui.theme.lossColor
+import com.masgzy.cfstmobile.ui.theme.speedColor
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
@@ -41,6 +44,8 @@ import com.masgzy.cfstmobile.viewmodel.TestViewModel
  * 数据中心汇总表（dcList 就绪后显示，操作列「选择测试/重新测试/测试中」）+ 扫描结果宽表。
  * 官方 8 列 = IP/端口/数据中心/落地区域/地区/城市/扫描方式/延迟；
  * 非标 8 列 = IP地址/端口号/丢包率/扫描方式/网络延迟/下载速度/OriginalInput/数据中心。
+ * 颜色对齐 CFData：延迟六档（httping 除以倍率）、丢包率/测速分级色；
+ * 仅 IP/端口单元格可点复制（对齐 CFData copy-ip）。
  */
 @Composable
 fun ResultsSection(
@@ -48,14 +53,16 @@ fun ResultsSection(
     scanRows: List<ScanRow>,
     dcState: DcTestUiState,
     official: Boolean,
+    onCopyClick: () -> Unit,
     onExportClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scanModeLabel =
-        if (viewModel.settings.value.pingMode == UiSettings.PING_HTTP) "HTTPing" else "TCPing"
+    val s = viewModel.settings.value
+    val isHttping = s.pingMode == UiSettings.PING_HTTP
+    val scanModeLabel = if (isHttping) "HTTPing" else "TCPing"
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ---------------- 数据中心汇总（对齐 #dcSection：dcList 非空才显示） ----------------
+        // ---------------- 数据中心汇总（对齐 #dcSection：dcList 非空才显示；渐进聚合时随进度出现） ----------------
         if (official && dcState.dcList.isNotEmpty()) {
             DcSummaryTable(
                 dcList = dcState.dcList,
@@ -83,9 +90,7 @@ fun ResultsSection(
                 text = "一键复制",
                 icon = R.drawable.ic_sym_content_copy,
                 enabled = scanRows.isNotEmpty(),
-                onClick = {
-                    copyToClipboard(context, scanRows.joinToString("\n") { "${it.ip}:${it.port}" })
-                },
+                onClick = onCopyClick,
                 modifier = Modifier.weight(1f),
             )
             GreenButton(
@@ -97,6 +102,14 @@ fun ResultsSection(
             )
         }
         Spacer(Modifier.height(8.dp))
+
+        // 复制回调：仅 IP 列复制 IP、端口列复制端口（对齐 CFData copy-ip 单元格语义）
+        val onIpPortCell: (Int, Int) -> Unit = { row, col ->
+            when (col) {
+                0 -> scanRows.getOrNull(row)?.let { copyToClipboard(context, it.ip) }
+                1 -> scanRows.getOrNull(row)?.let { copyToClipboard(context, it.port.toString()) }
+            }
+        }
 
         if (official) {
             ScrollTable(
@@ -114,15 +127,14 @@ fun ResultsSection(
                         "${fmt0(row.delayMs)}ms",
                     )
                 },
-                onRowClick = { index ->
-                    copyToClipboard(context, "${scanRows[index].ip}:${scanRows[index].port}")
+                cellColors = scanRows.map { row ->
+                    listOf(null, null, null, null, null, null, null, delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, official = true, nsbTls = true)))
                 },
+                onCellClick = onIpPortCell,
             )
         } else {
             // 精简/完整表格视图（对齐 CFData nsbCompactView，默认精简）
-            // 精简 = 8 列（对齐 CFData NSB_COMPACT_HEADERS 中我们有数据的子集）；
-            // 完整 = 8 列 + 源IP位置/地区/城市（聚合补齐后可用）
-            val compactView = viewModel.settings.value.nsbCompactView
+            val compactView = s.nsbCompactView
             val columns = buildList {
                 addAll(listOf("IP地址", "端口号", "丢包率", "扫描方式", "网络延迟", "下载速度", "OriginalInput", "数据中心"))
                 if (!compactView) addAll(listOf("源IP位置", "地区", "城市"))
@@ -151,9 +163,19 @@ fun ResultsSection(
                         row.city.ifEmpty { "-" },
                     )
                 },
-                onRowClick = { index ->
-                    copyToClipboard(context, "${scanRows[index].ip}:${scanRows[index].port}")
+                cellColors = scanRows.map { row ->
+                    val colors = mutableListOf<Color?>(
+                        null, null,
+                        lossColor(row.lossRate),
+                        null,
+                        delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, official = false, nsbTls = s.nsbTls)),
+                        row.speedMbps?.let { speedColor(it) },
+                        null, null,
+                    )
+                    if (!compactView) { colors.addAll(listOf(null, null, null)) }
+                    colors
                 },
+                onCellClick = onIpPortCell,
             )
         }
     }

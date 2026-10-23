@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,7 +43,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -52,11 +52,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,7 +70,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -95,10 +94,14 @@ import com.masgzy.cfstmobile.ui.theme.ColorTuple
 import com.masgzy.cfstmobile.ui.theme.ColorTupleDefaults
 import com.masgzy.cfstmobile.ui.theme.CfMotion
 import com.masgzy.cfstmobile.ui.theme.PaletteStyle
+import com.masgzy.cfstmobile.data.toExportItem
 import com.masgzy.cfstmobile.ui.dialogs.ExportDialog
+import com.masgzy.cfstmobile.ui.dialogs.ExportSource
 import com.masgzy.cfstmobile.ui.dialogs.HistoryDialog
 import com.masgzy.cfstmobile.viewmodel.TestUiState
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /** 触感反馈（M3 推荐的选择类轻触感，minSdk 24 可用） */
 internal fun android.view.View.tickHaptic() {
@@ -107,7 +110,7 @@ internal fun android.view.View.tickHaptic() {
 
 /**
  * 应用根（完全 Material You）：
- * LargeTopAppBar（滚动折叠：主标题 + 版本号副行 + 右上操作）→
+ * 固定小 TopAppBar（主标题 + 版本号副行同行 + 右上操作，不随内容滚动）→
  * 状态横幅 → 模式切换（SegmentedButton）→ 参数卡 → 开始按钮 → 进度条 →
  * 结果区（官方双 Tab：扫描/详细测试）→ 终端日志。
  * 外观设置走 ModalBottomSheet（M3 底部弹层：颜色模式/动态取色/AMOLED）。
@@ -127,6 +130,8 @@ fun AppRoot(viewModel: TestViewModel) {
     val view = LocalView.current
 
     var showExport by remember { mutableStateOf(false) }
+    /** 导出弹窗初始数据源：0=扫描结果，1=详细测试（对齐 CFData copyModalMode 随入口 tab） */
+    var exportInitialSource by remember { mutableStateOf(0) }
     var scanTab by rememberSaveable { mutableStateOf(true) }
     val official = settings.ipSource == UiSettings.SOURCE_BUILTIN
     // CfMotion 为无状态单例，任何 lambda（含非组合的 transitionSpec）均可直接引用
@@ -143,20 +148,18 @@ fun AppRoot(viewModel: TestViewModel) {
         if (official && dcState.step == com.masgzy.cfstmobile.data.DcStep.TESTING) scanTab = false
     }
 
-    val topAppBarState = rememberTopAppBarState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
-
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
+            // 固定小顶栏：标题常驻顶栏不随内容滚动（用户反馈：别挪下来）
+            TopAppBar(
                 title = {
-                    Column {
+                    Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             text = "CFSTMobile",
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
+                        Spacer(Modifier.width(6.dp))
                         Text(
                             text = "v${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.bodySmall,
@@ -165,7 +168,6 @@ fun AppRoot(viewModel: TestViewModel) {
                     }
                 },
                 actions = { TopActions(viewModel, settings) },
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { padding ->
@@ -292,14 +294,16 @@ fun AppRoot(viewModel: TestViewModel) {
                             state = dcState,
                             hasResults = uiState.results.isNotEmpty(),
                             speedMinMbps = settings.officialSpeedMin,
-                            onExportClick = { showExport = true },
+                            onCopyClick = { exportInitialSource = 1; showExport = true },
+                            onExportClick = { exportInitialSource = 1; showExport = true },
                         )
                         else -> ResultsSection(
                             viewModel = viewModel,
                             scanRows = scanRows,
                             dcState = dcState,
                             official = official,
-                            onExportClick = { showExport = true },
+                            onCopyClick = { exportInitialSource = 0; showExport = true },
+                            onExportClick = { exportInitialSource = 0; showExport = true },
                         )
                     }
                 }
@@ -311,7 +315,30 @@ fun AppRoot(viewModel: TestViewModel) {
     }
 
     if (showExport) {
-        ExportDialog(results = uiState.results, onDismiss = { showExport = false })
+        // 数据源对齐 CFData copyModal 随入口 tab：扫描结果 / 详细测试（延迟=avg，速度列=测速）
+        val exportSources = buildList {
+            if (uiState.results.isNotEmpty()) {
+                add(ExportSource(label = "扫描结果", items = uiState.results))
+            }
+            if (dcState.results.isNotEmpty()) {
+                add(
+                    ExportSource(
+                        label = "详细测试",
+                        items = dcState.results.map { it.toExportItem() },
+                        isQualified = { item ->
+                            item.downloadSpeedMbps?.let { it >= settings.officialSpeedMin } == true
+                        },
+                    ),
+                )
+            }
+        }
+        if (exportSources.isNotEmpty()) {
+            ExportDialog(
+                sources = exportSources,
+                initialSource = exportInitialSource.coerceIn(0, exportSources.lastIndex),
+                onDismiss = { showExport = false },
+            )
+        }
     }
 }
 
@@ -334,7 +361,11 @@ private fun TopActions(viewModel: TestViewModel, settings: UiSettings) {
                 )
             }
         }) {
-            Icon(painter = painterResource(R.drawable.ic_github), contentDescription = "GitHub 仓库")
+            Icon(
+                painter = painterResource(R.drawable.ic_github),
+                contentDescription = "GitHub 仓库",
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
         Box {
             IconButton(onClick = { showConfigMenu = true }) {
@@ -882,7 +913,7 @@ private fun SettingsMenu(
     }
 }
 
-// ---------------------------------------------------------------- 配置菜单
+// ---------------------------------------------------------------- 配置菜单（多配置：保存/列表/切换）
 
 @Composable
 private fun ConfigMenu(
@@ -891,9 +922,13 @@ private fun ConfigMenu(
     viewModel: TestViewModel,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val configList by viewModel.configList.collectAsStateWithLifecycle()
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var showListDialog by remember { mutableStateOf(false) }
+
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
-            text = { Text("保存当前配置") },
+            text = { Text("保存当前配置…") },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_sym_save),
@@ -903,11 +938,11 @@ private fun ConfigMenu(
             },
             onClick = {
                 onDismiss()
-                viewModel.saveConfigSnapshot()
+                showSaveDialog = true
             },
         )
         DropdownMenuItem(
-            text = { Text("加载保存配置") },
+            text = { Text("配置列表${if (configList.isNotEmpty()) "（${configList.size}）" else ""}") },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_sym_folder_open),
@@ -917,11 +952,12 @@ private fun ConfigMenu(
             },
             onClick = {
                 onDismiss()
-                viewModel.loadConfigSnapshot()
+                showListDialog = true
             },
         )
+        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
         DropdownMenuItem(
-            text = { Text("自动加载配置") },
+            text = { Text("自动加载最近配置") },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_sym_sync),
@@ -939,23 +975,116 @@ private fun ConfigMenu(
             },
             onClick = { viewModel.updateSettings { it.copy(autoLoadConfig = !it.autoLoadConfig) } },
         )
-        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
-        DropdownMenuItem(
-            text = { Text("删除保存配置", color = MaterialTheme.colorScheme.error) },
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.ic_sym_delete),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp),
-                )
+    }
+
+    if (showSaveDialog) {
+        SaveConfigDialog(
+            defaultName = "配置 ${configList.size + 1}",
+            onSave = { name ->
+                viewModel.saveConfigSnapshot(name)
+                showSaveDialog = false
             },
-            onClick = {
-                onDismiss()
-                viewModel.deleteConfigSnapshot()
-            },
+            onDismiss = { showSaveDialog = false },
         )
     }
+    if (showListDialog) {
+        ConfigListDialog(
+            viewModel = viewModel,
+            onDismiss = { showListDialog = false },
+        )
+    }
+}
+
+/** 保存配置对话框：输入配置名称（同名覆盖） */
+@Composable
+private fun SaveConfigDialog(
+    defaultName: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(defaultName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("保存配置") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("配置名称") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name) }) { Text("保存") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
+}
+
+/** 配置列表对话框：点击加载 / 右侧删除（多配置管理） */
+@Composable
+private fun ConfigListDialog(
+    viewModel: TestViewModel,
+    onDismiss: () -> Unit,
+) {
+    val configs by viewModel.configList.collectAsStateWithLifecycle()
+    val timeFmt = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("配置列表") },
+        text = {
+            if (configs.isEmpty()) {
+                Text(
+                    text = "暂无保存的配置\n在「保存当前配置」中创建",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(configs.size, key = { configs[it].id }) { index ->
+                        val entry = configs[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.loadConfigSnapshot(entry.id)
+                                    onDismiss()
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = entry.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = timeFmt.format(java.util.Date(entry.time)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { viewModel.deleteConfigSnapshot(entry.id) }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_sym_delete),
+                                    contentDescription = "删除配置",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        },
+    )
 }
 
 // ---------------------------------------------------------------- 横幅/进度

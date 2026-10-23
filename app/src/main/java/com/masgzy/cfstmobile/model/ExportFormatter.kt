@@ -50,6 +50,22 @@ object ExportFormatter {
     )
 
     /**
+     * 自定义字段（对齐 CFData 自定义字段语义：`标题:内容`，多项逗号分隔）。
+     * 输出时作为固定值列追加：TXT 附加列拼接内容值，CSV 以标题作表头。
+     */
+    data class CustomField(val label: String, val value: String)
+
+    /** 解析自定义字段描述串（对齐 CFData parseResultCustomFields：`标题:内容`，逗号分隔） */
+    fun parseCustomFields(spec: String): List<CustomField> =
+        spec.split(',').mapNotNull { part ->
+            val item = part.trim()
+            if (item.isEmpty()) return@mapNotNull null
+            val colon = item.indexOf(':')
+            if (colon <= 0 || colon >= item.length - 1) return@mapNotNull null
+            CustomField(item.take(colon).trim(), item.substring(colon + 1).trim())
+        }
+
+    /**
      * 导出选项（对齐 CFData-WEB 导出弹窗的行范围 / IP 类型 / 字段选择 / TXT 分隔符 / IPv6 方括号）。
      *
      * @param startRow 起始行（从 1 计，最小 1）
@@ -62,6 +78,7 @@ object ExportFormatter {
         val fields: List<ExportField> = DEFAULT_CSV_FIELDS,
         val txtSeparator: String = "-",
         val ipv6Brackets: Boolean = false,
+        val customFields: List<CustomField> = emptyList(),
     )
 
     /** IP 类型判断：含冒号即 IPv6（引擎结果 ip 为裸地址） */
@@ -85,15 +102,18 @@ object ExportFormatter {
         return if (format == FORMAT_TXT) buildTxt(sliced, options) else buildCsv(sliced, options)
     }
 
-    /** TXT：`IP:端口` 或 `IP:端口#字段1<分隔符>字段2`（空值跳过；IP:PORT 恒为首字段） */
+    /** TXT：`IP:端口` 或 `IP:端口#字段1<分隔符>字段2`（空值跳过；IP:PORT 恒为首字段；自定义字段值恒追加） */
     private fun buildTxt(results: List<CfstResultItem>, options: ExportOptions): String =
         buildString {
             results.forEach { r ->
                 append(formatIpPort(r.ip, r.port, options.ipv6Brackets))
-                // 对齐 CFData：ipport 单独渲染，其余选中字段按选择顺序作为附加列，空值跳过
+                // 对齐 CFData：ipport 单独渲染，其余选中字段按选择顺序作为附加列，空值跳过；
+                // 自定义字段值恒追加在尾部（CFData 语义）
                 val extras = options.fields
                     .filter { it != ExportField.IPPORT }
                     .mapNotNull { f -> txtValue(r, f).takeUnless { it.isEmpty() } }
+                    .toMutableList()
+                extras.addAll(options.customFields.map { it.value })
                 if (extras.isNotEmpty()) {
                     append('#').append(extras.joinToString(options.txtSeparator))
                 }
@@ -101,11 +121,13 @@ object ExportFormatter {
             }
         }
 
-    /** CSV：表头 = 选中字段 label，值 csv 转义 */
+    /** CSV：表头 = 选中字段 label + 自定义字段标题，值 csv 转义 */
     private fun buildCsv(results: List<CfstResultItem>, options: ExportOptions): String = buildString {
-        appendLine(options.fields.joinToString(",") { it.label })
+        val headers = options.fields.map { it.label } + options.customFields.map { it.label }
+        appendLine(headers.joinToString(","))
         results.forEach { r ->
-            appendLine(options.fields.joinToString(",") { f -> csvEscape(csvValue(r, f)) })
+            val values = options.fields.map { f -> csvValue(r, f) } + options.customFields.map { it.value }
+            appendLine(values.joinToString(",") { csvEscape(it) })
         }
     }
 

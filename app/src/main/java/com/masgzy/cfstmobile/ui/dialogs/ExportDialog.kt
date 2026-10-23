@@ -66,41 +66,71 @@ import com.masgzy.cfstmobile.ui.components.copyToClipboard
 import kotlinx.coroutines.launch
 
 /**
+ * 导出数据源（对齐 CFData copyModal 随当前 tab 切换）：
+ * [isQualified] 非空时弹窗内提供「合格筛选」（全部/仅合格/仅不合格，对齐 CFData）。
+ */
+data class ExportSource(
+    val label: String,
+    val items: List<CfstResultItem>,
+    val isQualified: ((CfstResultItem) -> Boolean)? = null,
+)
+
+/**
  * 导出与上传底部抽屉（Material You ModalBottomSheet）：
  *
  * 1. 结果导出：TXT（CFData-WEB 兼容 `IP:端口#数据中心`）或 CSV（XIU2 CloudflareST
- *    兼容列序），预览后一键复制；支持行范围 / IP 类型 / 字段选择 / TXT 分隔符 /
- *    IPv6 方括号自定义（管线对齐 CFData-WEB 导出弹窗）。
+ *    兼容列序），预览后一键复制；支持行范围 / IP 类型 / 合格筛选 / 字段选择 /
+ *    自定义字段 / TXT 分隔符 / IPv6 方括号自定义（管线对齐 CFData-WEB 一键复制弹窗）。
+ *    多数据源（扫描结果 / 详细测试）可切换。
  * 2. edgetunnel 上传：把导出内容写入 edgetunnel（CM 系 Worker）的订阅 ADD.txt，
  *    协议与 CFData-WEB 完全一致；支持多账户管理（新增/选择/删除）与
  *    覆盖/追加两种模式。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
+fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSource: Int = 0) {
     val context = LocalContext.current
     val store = remember { EdgetunnelStore(context) }
     val scope = rememberCoroutineScope()
 
-    // ---------------- 导出状态（行范围/IP 类型/字段/分隔符，管线对齐 CFData） ----------------
+    // ---------------- 数据源（扫描/详细测试切换，对齐 CFData copyModalMode） ----------------
+    var sourceIdx by remember { mutableStateOf(initialSource.coerceIn(0, (sources.size - 1).coerceAtLeast(0))) }
+    val source = sources.getOrElse(sourceIdx) { sources.first() }
+
+    // ---------------- 导出状态（行范围/IP 类型/合格筛选/字段/分隔符，管线对齐 CFData） ----------------
     var format by remember { mutableStateOf(FORMAT_TXT) }
     var fieldOrder by remember { mutableStateOf(ExportFormatter.DEFAULT_TXT_FIELDS) }
     var startRowText by remember { mutableStateOf("1") }
     var endRowText by remember { mutableStateOf("0") }
     var ipFilter by remember { mutableStateOf(ExportFormatter.IP_ALL) }
+    var qualifiedFilter by remember { mutableStateOf("all") }
     var txtSeparator by remember { mutableStateOf("-") }
     var ipv6Brackets by remember { mutableStateOf(false) }
+    var customFieldsText by remember { mutableStateOf("") }
+
+    // 合格筛选（对齐 CFData 复制合格结果：全部/仅合格/仅不合格）在 ipFilter 之前生效
+    val filteredItems = remember(source, ipFilter, qualifiedFilter) {
+        source.items.filter { r ->
+            val passQualified = when (qualifiedFilter) {
+                "qualified" -> source.isQualified?.invoke(r) ?: true
+                "unqualified" -> source.isQualified?.let { !it(r) } ?: false
+                else -> true
+            }
+            passQualified && (ipFilter == ExportFormatter.IP_ALL || ExportFormatter.ipVersion(r.ip) == ipFilter)
+        }
+    }
 
     val exportOptions = ExportOptions(
         startRow = startRowText.toIntOrNull()?.coerceAtLeast(1) ?: 1,
         endRow = endRowText.toIntOrNull()?.coerceAtLeast(0) ?: 0,
-        ipFilter = ipFilter,
+        ipFilter = ExportFormatter.IP_ALL, // IP 类型已并入 filteredItems
         fields = fieldOrder,
         txtSeparator = txtSeparator.ifBlank { "-" },
         ipv6Brackets = ipv6Brackets,
+        customFields = ExportFormatter.parseCustomFields(customFieldsText),
     )
-    val content = remember(format, results, exportOptions) {
-        ExportFormatter.build(results, format, exportOptions)
+    val content = remember(format, filteredItems, exportOptions) {
+        ExportFormatter.build(filteredItems, format, exportOptions)
     }
     val exportedCount = remember(content) { content.lines().count { it.isNotBlank() } }
     val preview = remember(content) { content.lines().take(6).joinToString("\n") }
@@ -150,10 +180,24 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "导出与上传（共 ${results.size} 条）",
+                text = "导出与上传（${source.label} ${source.items.size} 条，筛选后 ${filteredItems.size} 条）",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
+
+            // ---------------- 数据源切换（扫描结果 / 详细测试） ----------------
+            if (sources.size > 1) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    sources.forEachIndexed { idx, s ->
+                        SegmentedButton(
+                            selected = sourceIdx == idx,
+                            onClick = { sourceIdx = idx },
+                            shape = SegmentedButtonDefaults.itemShape(index = idx, count = sources.size),
+                            label = { Text(s.label, maxLines = 1) },
+                        )
+                    }
+                }
+            }
 
             // ---------------- 导出 ----------------
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -218,6 +262,20 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                         )
                     }
             }
+            // 合格筛选（对齐 CFData copyModal：全部/仅合格/仅不合格；仅提供 isQualified 的源显示）
+            if (source.isQualified != null) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf("全部" to "all", "仅合格" to "qualified", "仅不合格" to "unqualified")
+                        .forEachIndexed { idx, (label, value) ->
+                            SegmentedButton(
+                                selected = qualifiedFilter == value,
+                                onClick = { qualifiedFilter = value },
+                                shape = SegmentedButtonDefaults.itemShape(index = idx, count = 3),
+                                label = { Text(label, maxLines = 1) },
+                            )
+                        }
+                }
+            }
             // 字段选择（选择顺序即输出列序；TXT 的 IP:PORT 恒为首列）
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -254,6 +312,16 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                     )
                 }
             }
+            // 自定义字段（对齐 CFData copyCustomFields：标题:内容，逗号分隔，值恒追加）
+            OutlinedTextField(
+                value = customFieldsText,
+                onValueChange = { customFieldsText = it },
+                label = { Text("自定义字段") },
+                placeholder = { Text("标题:内容，逗号分隔，如 备注:测试版,归属:cfst") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium,
+            )
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -447,7 +515,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                                 content
                             } else {
                                 // 订阅文件用 TXT 行格式；CSV 仅用于表格工具对表
-                                ExportFormatter.toTxt(results)
+                                ExportFormatter.toTxt(filteredItems)
                             },
                             mode = etMode,
                             onStatus = { msg -> etStatus = msg },
@@ -464,7 +532,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                         etUploading = false
                     }
                 },
-                enabled = !etUploading && results.isNotEmpty() &&
+                enabled = !etUploading && filteredItems.isNotEmpty() &&
                     etHost.isNotBlank() && etPassword.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -499,8 +567,8 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                 ghUploading = ghUploading,
                 ghStatus = ghStatus,
                 ghStatusOk = ghStatusOk,
-                resultCount = results.size,
-                uploadContent = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(results),
+                resultCount = filteredItems.size,
+                uploadContent = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(filteredItems),
                 onToken = { ghToken = it },
                 onOwner = { ghOwner = it },
                 onRepo = { ghRepo = it },
@@ -534,7 +602,7 @@ fun ExportDialog(results: List<CfstResultItem>, onDismiss: () -> Unit) {
                             branch = ghBranch,
                             path = ghPath,
                             message = ghMessage,
-                            content = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(results),
+                            content = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(filteredItems),
                             onStatus = { msg -> ghStatus = msg },
                         ).fold(
                             onSuccess = { url ->

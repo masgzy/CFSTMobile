@@ -19,6 +19,7 @@ import com.masgzy.cfstmobile.data.GithubClient
 import com.masgzy.cfstmobile.data.GithubStore
 import com.masgzy.cfstmobile.data.HistoryRecord
 import com.masgzy.cfstmobile.data.HistoryStore
+import com.masgzy.cfstmobile.data.OfficialIpList
 import com.masgzy.cfstmobile.data.ScanRow
 import com.masgzy.cfstmobile.data.SettingsRepository
 import com.masgzy.cfstmobile.data.UiSettings
@@ -124,15 +125,27 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     private val _logs = MutableStateFlow(listOf<String>())
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
 
+    // ------------------------------------------------- 配置快照（多配置：保存/列表/切换）
+
+    private val _configList = MutableStateFlow(emptyList<ConfigBackup.Entry>())
+    val configList: StateFlow<List<ConfigBackup.Entry>> = _configList.asStateFlow()
+
+    private fun refreshConfigList() {
+        _configList.value = configBackup.list()
+    }
+
     init {
-        // 自动加载已保存配置（对齐 CFData configAutoLoad=localStorage）
+        // 自动加载最近保存的配置（多配置：自动加载目标 = 最近一条；对齐 CFData configAutoLoad）
         if (_settings.value.autoLoadConfig) {
-            configBackup.load()?.let { saved ->
-                _settings.value = saved
-                settingsRepo.save(saved)
-                log("已自动加载保存配置")
+            configBackup.latest()?.let { entry ->
+                configBackup.load(entry.id)?.let { saved ->
+                    _settings.value = saved
+                    settingsRepo.save(saved)
+                    log("已自动加载配置「${entry.name}」")
+                }
             }
         }
+        refreshConfigList()
         log("等待操作...")
     }
 
@@ -188,8 +201,6 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         settingsRepo.save(next)
     }
 
-    // ------------------------------------------------- 配置快照（💾 保存/加载）
-
     /** 追加一条终端日志（时间戳前缀，对齐 CFData log-box 样式） */
     private fun log(message: String) {
         val ts = SimpleDateFormat("[HH:mm:ss]", Locale.US).format(Date())
@@ -197,31 +208,32 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         _logs.value = if (next.size > MAX_LOG_LINES) next.takeLast(MAX_LOG_LINES) else next
     }
 
-    fun saveConfigSnapshot() {
-        configBackup.save(_settings.value)
-        _toast.tryEmit("已保存当前配置")
-        log("已保存当前配置")
+    fun saveConfigSnapshot(name: String) {
+        val trimmed = name.trim().ifEmpty { "配置 ${_configList.value.size + 1}" }
+        configBackup.save(trimmed, _settings.value)
+        refreshConfigList()
+        _toast.tryEmit("已保存配置「$trimmed」")
+        log("已保存配置「$trimmed」")
     }
 
-    fun loadConfigSnapshot() {
-        val saved = configBackup.load()
+    fun loadConfigSnapshot(id: String) {
+        val saved = configBackup.load(id)
         if (saved == null) {
-            _toast.tryEmit("没有已保存的配置")
+            _toast.tryEmit("配置不存在或已损坏")
             return
         }
         _settings.value = saved
         settingsRepo.save(saved)
-        _toast.tryEmit("已加载保存配置")
-        log("已加载保存配置")
+        _toast.tryEmit("已加载配置")
+        log("已加载配置（${_configList.value.find { it.id == id }?.name ?: ""}）")
     }
 
-    fun deleteConfigSnapshot() {
-        configBackup.delete()
-        _toast.tryEmit("已删除保存配置")
-        log("已删除保存配置")
+    fun deleteConfigSnapshot(id: String) {
+        configBackup.delete(id)
+        refreshConfigList()
+        _toast.tryEmit("已删除配置")
+        log("已删除一条配置（剩余 ${_configList.value.size} 条）")
     }
-
-    fun hasConfigSnapshot(): Boolean = configBackup.exists()
 
     /** 恢复全部默认配置（对齐 CFData 设置菜单危险按钮） */
     fun resetSettings() {
@@ -273,16 +285,36 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                     (if (s.downloadEnabled) " · 自动测速（并发 ${s.speedThreads}）" else ""),
             )
             var cfg = s.toCfstConfig(urlTargets)
-            // 官方 + 精简地址库：引擎 ip_file 直读本地库（对齐 CFData 覆盖 ips-v4.txt 后续扫描）
-            if (s.official && s.officialUseCompactLib) {
-                val count = compactLibrary.subnetCount()
-                val path = compactLibrary.engineFilePath()
-                if (path != null && count > 0) {
-                    log("使用精简地址库：$count 个 /24 子网")
-                    cfg = cfg.copy(ipText = "", ipFile = path)
+            // 官方模式：地址库展开随机（对齐 CFData：缓存/在线 baipiao.eu.org → 每 /24 随机 1 IP）
+            if (s.official) {
+                val isV6 = s.ipType == UiSettings.IP_V6
+                val libCount = compactLibrary.subnetCount()
+                val useLib = s.officialUseCompactLib && libCount > 0
+                val content = if (useLib) {
+                    compactLibrary.readLines().joinToString("\n").ifBlank { null }
                 } else {
-                    log("精简地址库不存在，回退内置段")
+                    OfficialIpList.fetchContent(getApplication(), isV6)
                 }
+                if (content == null) {
+                    _uiState.update {
+                        it.copy(
+                            isRunning = false, phase = "error",
+                            message = "地址库拉取失败（无网络且无本地缓存），请重试",
+                        )
+                    }
+                    return@launch
+                }
+                val ips = OfficialIpList.expandToRandomIps(content, isV6)
+                if (ips.isEmpty()) {
+                    _uiState.update {
+                        it.copy(isRunning = false, phase = "error", message = "地址库内容为空或无法解析")
+                    }
+                    return@launch
+                }
+                val listFile = writeOfficialIpFile(ips)
+                cfg = cfg.copy(ipText = "", ipFile = listFile.absolutePath)
+                val source = if (useLib) "精简地址库（$libCount 个 /24 子网）" else "Cloudflare 地址库"
+                log("IP 地址库就绪：$source → 展开 ${ips.size} 个测试 IP（每 /24 随机取一，对齐 CFData）")
             }
             val configJson = ProtocolJson.json.encodeToString(
                 com.masgzy.cfstmobile.model.CfstConfig.serializer(),
@@ -383,22 +415,31 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         speedSession?.stop()
     }
 
+    /** 展开后的官方测试 IP 写入 filesDir/official_ips.txt（引擎 ip_file 直读） */
+    private fun writeOfficialIpFile(ips: List<String>): java.io.File {
+        val f = java.io.File(getApplication<Application>().filesDir, "official_ips.txt")
+        f.writeText(ips.joinToString("\n"))
+        return f
+    }
+
     // ------------------------------------------------------ 地址库精简
 
     /**
-     * 精简当前官方段（对齐 CFData compactipv4）：按 /24 子网探测 TCP:80 连通性，
+     * 精简地址库（对齐 CFData compactipv4）：按 /24 子网探测 TCP:80 连通性，
      * 仅保留活跃子网并覆盖本地 ips-v4.txt；完成后自动开启「使用精简地址库」。
+     * 精简对象 = 地址库内容（缓存优先 → 在线 → 内置段回退）。
      */
     fun startCompact() {
         if (_compactState.value.running) return
         val s = _settings.value
         if (!s.official || s.ipType != UiSettings.IP_V4) {
-            _toast.tryEmit("精简地址库仅支持官方 IPv4 段")
+            _toast.tryEmit("精简地址库仅支持官方 IPv4 地址库")
             return
         }
-        val content = s.effectiveSegments.joinToString("\n")
-        if (content.isBlank()) {
-            _toast.tryEmit("当前没有可精简的官方段（先在高级参数选择 IP 段）")
+        // 对齐 CFData：精简对象 = 本地 ips-v4.txt（缓存优先，离线回退内置段），覆盖后后续扫描直接复用
+        val content = OfficialIpList.fetchContent(getApplication(), isV6 = false)
+        if (content.isNullOrBlank()) {
+            _toast.tryEmit("地址库拉取失败（无网络且无本地缓存）")
             return
         }
         compactJob?.cancel()
@@ -568,12 +609,20 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             // 位置表与 colo 探测并行；位置表失败降级为空表
             val locationsDeferred = async { DcLocations.load(getApplication()) }
             val missing = items.filter { it.colo.isNullOrBlank() }
-            var enriched = items
+            var colos: Map<String, String> = emptyMap()
             if (missing.isNotEmpty()) {
-                val colos = probeColos(missing)
-                enriched = items.map { it.copy(colo = it.colo ?: colos[it.address()]) }
+                // 渐进式：边探测边发布部分聚合（扫描 Tab 的汇总表随进度逐渐完整，
+                // 位置列由最终聚合补齐）；对齐 CFData 汇总随扫描就绪的体验
+                colos = probeColos(missing) { partial ->
+                    val partialEnriched = items.map { it.copy(colo = it.colo ?: partial[it.address()]) }
+                    _dcState.update { st ->
+                        st.copy(dcList = aggregateDcList(partialEnriched, emptyMap()))
+                    }
+                    _scanRows.value = partialEnriched.map { ScanRow.from(it, emptyMap()) }
+                }
             }
             dcLocations = locationsDeferred.await()
+            val enriched = items.map { it.copy(colo = it.colo ?: colos[it.address()]) }
             val dcList = aggregateDcList(enriched, dcLocations)
             dcEnriched = enriched
             refreshScanRows()
@@ -597,24 +646,38 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 并发 trace 探测每 IP 的 colo（50 并发，对齐 CFData runBoundedWorkers 上限） */
-    private suspend fun probeColos(items: List<CfstResultItem>): Map<String, String> {
+    /**
+     * 并发 trace 探测每 IP 的 colo（[DC_PROBE_CONCURRENCY] 并发），
+     * [onPartial] 周期性回调已就绪部分（渐进聚合发布）。
+     */
+    private suspend fun probeColos(
+        items: List<CfstResultItem>,
+        onPartial: suspend (Map<String, String>) -> Unit,
+    ): Map<String, String> {
         val out = ConcurrentHashMap<String, String>()
         val done = AtomicInteger(0)
         val total = items.size
         _dcState.update { it.copy(probeDone = 0, probeTotal = total) }
-        val sem = Semaphore(DC_CONCURRENCY)
+        val sem = Semaphore(DC_PROBE_CONCURRENCY)
+        val lastPublished = AtomicInteger(0)
         coroutineScope {
             items.forEach { item ->
                 launch {
                     sem.withPermit {
                         val colo = DcProbe.fetchColo(item.ip, item.port)
                         if (colo != null) out[item.address()] = colo
-                        _dcState.update { it.copy(probeDone = done.incrementAndGet(), probeTotal = total) }
+                        val d = done.incrementAndGet()
+                        _dcState.update { it.copy(probeDone = d, probeTotal = total) }
+                        // 每完成一批就发布一次部分聚合（避免每 IP 全量重聚合开销）
+                        if (d - lastPublished.get() >= PARTIAL_PUBLISH_BATCH) {
+                            lastPublished.set(d)
+                            onPartial(out.toMap())
+                        }
                     }
                 }
             }
         }
+        onPartial(out.toMap())
         return out
     }
 
@@ -966,7 +1029,13 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         /** 终端日志面板保留条数上限 */
         const val MAX_LOG_LINES = 200
 
-        /** 数据中心探测/详细测试并发上限（对齐 CFData runBoundedWorkers 50 workers） */
+        /** 数据中心 colo 探测并发（汇总提速：50 → 128，trace 为短连接轻请求） */
+        const val DC_PROBE_CONCURRENCY = 128
+
+        /** colo 探测渐进聚合发布批次（每完成 N 个发布一次部分聚合） */
+        const val PARTIAL_PUBLISH_BATCH = 32
+
+        /** 详细测试（选中 DC 的 IP 延迟精测）并发，保持对齐 CFData runBoundedWorkers */
         const val DC_CONCURRENCY = 50
 
         val Factory = viewModelFactory {
