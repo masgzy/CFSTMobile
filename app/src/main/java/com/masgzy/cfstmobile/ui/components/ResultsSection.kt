@@ -128,7 +128,7 @@ fun ResultsSection(
                     )
                 },
                 cellColors = scanRows.map { row ->
-                    listOf(null, null, null, null, null, null, null, delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, official = true, nsbTls = true)))
+                    listOf(null, null, null, null, null, null, null, delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, isOfficial = true, nsbTls = true)))
                 },
                 onCellClick = onIpPortCell,
             )
@@ -168,7 +168,7 @@ fun ResultsSection(
                         null, null,
                         lossColor(row.lossRate),
                         null,
-                        delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, official = false, nsbTls = s.nsbTls)),
+                        delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, isOfficial = false, nsbTls = s.nsbTls)),
                         row.speedMbps?.let { speedColor(it) },
                         null, null,
                     )
