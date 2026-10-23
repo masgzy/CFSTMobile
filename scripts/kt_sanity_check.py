@@ -18,12 +18,12 @@ REQUIRED = {
     "CfWidgets.kt": ["fun StatusBanner", "fun ModeSwitch", "fun ParamsCard", "fun OptionItem",
                      "fun CfDropdown", "fun CfTextField", "fun GreenButton", "fun PrimaryButton",
                      "fun CountBadge", "fun CfTabs", "fun LogPanel", "fun CfTable", "data class CfOption"],
-    "ParamsSection.kt": ["fun ParamsSection", "SegmentsDialog("],
+    "ParamsSection.kt": ["OptionGrid", "PortDropdown", "IP 地址库"],
     "ResultsSection.kt": ["fun ResultsSection"],
     "DcTestSection.kt": ["fun DcTestSection"],
     "AppRoot.kt": ["fun AppRoot", "ConfigMenu", "SettingsMenu", "bannerInfo"],
-    "UiSettings.kt": ["BUILT_IN_IPS_V6", "object SpeedUrlPresets", "effectiveSegments"],
-    "ConfigBackup.kt": ["fun save", "fun load", "fun delete", "fun exists"],
+    "UiSettings.kt": ["BUILT_IN_IPS_V6", "object SpeedUrlPresets", "fallbackSegments"],
+    "ConfigBackup.kt": ["fun save", "fun load", "fun delete", "fun list", "fun latest"],
 }
 
 def strip_kotlin(text: str) -> str:

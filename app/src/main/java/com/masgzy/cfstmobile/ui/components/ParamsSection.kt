@@ -40,10 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.masgzy.cfstmobile.R
-import com.masgzy.cfstmobile.data.BUILT_IN_IPS_V6
 import com.masgzy.cfstmobile.data.SpeedUrlPresets
 import com.masgzy.cfstmobile.data.UiSettings
-import com.masgzy.cfstmobile.ui.dialogs.SegmentsDialog
 import com.masgzy.cfstmobile.viewmodel.CompactUiState
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
@@ -640,7 +638,6 @@ private fun AdvancedParams(
     onUpdate: (((UiSettings) -> UiSettings)) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var showSegments by rememberSaveable { mutableStateOf(false) }
 
     Spacer(Modifier.height(12.dp))
     Row(
@@ -682,23 +679,15 @@ private fun AdvancedParams(
         Column {
         OptionGap()
         if (official) {
-            OptionItem(label = "IP 段", icon = R.drawable.ic_sym_extension) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = if (settings.ipType == UiSettings.IP_V6) {
-                            "IPv6 使用官方全部 ${BUILT_IN_IPS_V6.size} 个地址段"
-                        } else {
-                            "已选 ${settings.selectedSegments.size} / 15 段"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (settings.ipType == UiSettings.IP_V4) {
-                        TextButton(onClick = { showSegments = true }) { Text("选择") }
-                    }
-                }
+            // 官方模式 IP 来源 = 地址库（缓存/在线 baipiao.eu.org，每 /24 随机取一，对齐 CFData），
+            // 段选择概念已随地址库化移除；此处保留官方提示行
+            OptionItem(label = "IP 地址库", icon = R.drawable.ic_sym_extension) {
+                Text(
+                    text = "缓存/在线地址库，每个 /24 随机取一（精简地址库可收缩）",
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             OptionGap()
         }
@@ -764,16 +753,6 @@ private fun AdvancedParams(
         }
     }
 
-    if (showSegments) {
-        SegmentsDialog(
-            selected = settings.selectedSegments,
-            onConfirm = { segments ->
-                onUpdate { it.copy(selectedSegments = segments) }
-                showSegments = false
-            },
-            onDismiss = { showSegments = false },
-        )
-    }
 }
 
 /** 端口下拉（HTTPS/HTTP 分组，对齐官方 optgroup） */

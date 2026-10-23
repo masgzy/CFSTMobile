@@ -48,6 +48,27 @@ class ExportFormatterTest {
     }
 
     @Test
+    fun `custom fields append values in txt and headers in csv`() {
+        val opts = ExportOptions(
+            fields = ExportFormatter.DEFAULT_TXT_FIELDS,
+            customFields = ExportFormatter.parseCustomFields("备注:测试版, 归属:cfst"),
+        )
+        val txt = ExportFormatter.build(listOf(item()), ExportFormatter.FORMAT_TXT, opts)
+        assertEquals("104.16.1.1:443#LAX-测试版-cfst\n", txt)
+
+        val csv = ExportFormatter.build(listOf(item()), ExportFormatter.FORMAT_CSV, ExportOptions(fields = listOf(ExportField.IP), customFields = opts.customFields))
+        val lines = csv.trim().lines()
+        assertEquals("IP 地址,备注,归属", lines[0])
+        assertEquals("104.16.1.1,测试版,cfst", lines[1])
+    }
+
+    @Test
+    fun `parseCustomFields ignores malformed parts`() {
+        val fields = ExportFormatter.parseCustomFields("a:1,, bad, :x, b:, c:d")
+        assertEquals(listOf("a" to "1", "c" to "d"), fields.map { it.label to it.value })
+    }
+
+    @Test
     fun `csv header matches cloudflarest columns`() {
         val out = ExportFormatter.toCsv(listOf(item()))
         val lines = out.trim().lines()

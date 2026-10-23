@@ -32,6 +32,9 @@ import com.masgzy.cfstmobile.data.DcSortKey
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestItem
 import com.masgzy.cfstmobile.data.DcTestUiState
+import com.masgzy.cfstmobile.ui.theme.delayColor
+import com.masgzy.cfstmobile.ui.theme.lossColor
+import com.masgzy.cfstmobile.ui.theme.speedColor
 import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
@@ -40,8 +43,8 @@ import com.masgzy.cfstmobile.viewmodel.TestViewModel
  * （一键测速/继续测速/一键排序/一键复制/结果操作，Material Symbols 图标）+
  * 12 列宽表：IP 地址/端口/数据中心/落地区域/地区/城市/扫描方式/丢包率/
  * 最小延迟/最大延迟/平均延迟/测速。
- * 点选 DC 后一条龙：延迟精测（tcping×10/httping×3，min/avg/max/丢包）→
- * 自动对通过 IP 做下载测速回填「测速」列。
+ * 颜色对齐 CFData：丢包率/min/max/avg 延迟（httping 除以倍率）/测速分级色；
+ * 仅 IP/端口单元格可点复制；一键复制打开带选项的复制弹窗。
  */
 
 /** 合格筛选（对齐 officialTestQualifiedFilter） */
@@ -55,10 +58,9 @@ fun DcTestSection(
     state: DcTestUiState,
     hasResults: Boolean,
     speedMinMbps: Double,
+    onCopyClick: () -> Unit,
     onExportClick: () -> Unit,
 ) {
-    val context = LocalContext.current
-
     Column(modifier = Modifier.fillMaxWidth()) {
         when (state.step) {
             DcStep.IDLE -> DcIdle(hasResults = hasResults, onStart = viewModel::startDcTest)
@@ -68,7 +70,7 @@ fun DcTestSection(
                 viewModel = viewModel,
                 state = state,
                 speedMinMbps = speedMinMbps,
-                onCopy = { copyToClipboard(context, it) },
+                onCopyClick = onCopyClick,
                 onExportClick = onExportClick,
             )
         }
@@ -158,9 +160,10 @@ private fun DcResults(
     viewModel: TestViewModel,
     state: DcTestUiState,
     speedMinMbps: Double,
-    onCopy: (String) -> Unit,
+    onCopyClick: () -> Unit,
     onExportClick: () -> Unit,
 ) {
+    val context = LocalContext.current
     var filter by remember { mutableStateOf(FILTER_ALL) }
     var showSortMenu by remember { mutableStateOf(false) }
 
@@ -293,7 +296,7 @@ private fun DcResults(
                     text = "一键复制",
                     icon = R.drawable.ic_sym_content_copy,
                     enabled = visible.isNotEmpty(),
-                    onClick = { onCopy(visible.joinToString("\n") { it.address() }) },
+                    onClick = onCopyClick,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -306,7 +309,10 @@ private fun DcResults(
         }
         Spacer(Modifier.height(8.dp))
 
-        // ---------------- 12 列宽表（对齐 #testTable） ----------------
+        // ---------------- 12 列宽表（对齐 #testTable；延迟/丢包/测速分级色，仅 IP/端口可点复制） ----------------
+        val isHttping =
+            viewModel.settings.value.pingMode == com.masgzy.cfstmobile.data.UiSettings.PING_HTTP
+        val nsbTls = viewModel.settings.value.nsbTls
         ScrollTable(
             columns = listOf(
                 "IP 地址", "端口", "数据中心", "落地区域", "地区", "城市",
@@ -331,7 +337,23 @@ private fun DcResults(
                     item.speedMbps?.let { "${fmt2(it)}MB/s" } ?: "未测速",
                 )
             },
-            onRowClick = { index -> onCopy(visible[index].address()) },
+            cellColors = visible.map { item ->
+                val factor = latencyColorFactor(isHttping, item.port, official = true, nsbTls = nsbTls)
+                listOf(
+                    null, null, null, null, null, null, null,
+                    lossColor(item.lossRate),
+                    delayColor(item.minMs.toDouble(), factor),
+                    delayColor(item.maxMs.toDouble(), factor),
+                    delayColor(item.avgMs, factor),
+                    item.speedMbps?.let { speedColor(it) },
+                )
+            },
+            onCellClick = { row, col ->
+                when (col) {
+                    0 -> visible.getOrNull(row)?.let { copyToClipboard(context, it.ip) }
+                    1 -> visible.getOrNull(row)?.let { copyToClipboard(context, it.port.toString()) }
+                }
+            },
         )
     }
 }
