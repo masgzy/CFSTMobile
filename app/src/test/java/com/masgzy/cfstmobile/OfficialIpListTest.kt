@@ -112,11 +112,44 @@ class OfficialIpListTest {
 
     @Test
     fun `builtin fallback covers all official v4 segments`() {
-        // 官方 15 段全部可解析展开（数量 = 每段 /24 数 ×1）
+        // 官方 15 段全部可解析展开（每 /24 随机 1 IP）：
+        // /20×3→48 + /22×5→20 + /18×2→128 + /17→128 + /15→512 + /13×2→4096 + /14→1024
         val content = com.masgzy.cfstmobile.data.BUILT_IN_IPS.joinToString("\n")
         val ips = OfficialIpList.expandToRandomIps(content, isV6 = false, random = Random(11))
-        // /20→16, /22→4, /18→64, /17→128, /15→512, /13→8192, /14→4096, /13→8192, /22→4
-        // 16*4 + 4*4 + 64*2 + 16*2 + 4 + 128 + 512 + 8192 + 4096 + 8192 + 4 = 21320
-        assertEquals(21320, ips.size)
+        assertEquals(5956, ips.size)
+    }
+
+    @Test
+    fun `v6 random ip text is rfc5952 compressed`() {
+        // formatV6 分支全覆盖（/128 无 host 位 → 确定性输出网络地址自身）：
+        // 此前用 InetAddress.hostAddress 会得到不压缩全展开形（如 "2400:cb00:0:0:0:0:0:0"）
+        assertEquals(
+            "::",
+            OfficialIpList.randomIpFromCidr("::/128", Random(1)),
+        )
+        assertEquals(
+            "2400:cb00::",
+            OfficialIpList.randomIpFromCidr("2400:cb00:0:0:0:0:0:0/128", Random(1)),
+        )
+        assertEquals(
+            "2400:cb00:ffff::",
+            OfficialIpList.randomIpFromCidr("2400:cb00:ffff:0:0:0:0:0/128", Random(1)),
+        )
+        assertEquals(
+            "2001:db8::1",
+            OfficialIpList.randomIpFromCidr("2001:db8:0:0:0:0:0:1/128", Random(1)),
+        )
+        // 单零组（长度 1 的零段）按 RFC 5952 不得压缩
+        assertEquals(
+            "1:0:2:3:4:5:6:7",
+            OfficialIpList.randomIpFromCidr("1:0:2:3:4:5:6:7/128", Random(1)),
+        )
+        // 随机抽取不变式：≥2 长零段必被压缩（不会出现相邻零组），字符集合法
+        repeat(50) { n ->
+            val ip = OfficialIpList.randomIpFromCidr("2400:cb00::/32", Random(n))!!
+            assertTrue(ip.startsWith("2400:cb00"))
+            assertTrue(!ip.contains("0:0:") && !ip.contains("::0"))
+            assertTrue(ip.matches(Regex("[0-9a-f:]+")))
+        }
     }
 }
