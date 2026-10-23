@@ -338,7 +338,7 @@ private fun DcResults(
                 )
             },
             cellColors = visible.map { item ->
-                val factor = latencyColorFactor(isHttping, item.port, official = true, nsbTls = nsbTls)
+                val factor = latencyColorFactor(isHttping, item.port, isOfficial = true, nsbTls = nsbTls)
                 listOf(
                     null, null, null, null, null, null, null,
                     lossColor(item.lossRate),
