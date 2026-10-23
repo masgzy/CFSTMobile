@@ -16,7 +16,8 @@ import kotlin.random.Random
  *
  * 历史 bug 根因记录：旧实现把内置 15 段交给引擎 calculate_sample_count 抽样
  * （每段 2^(hostbits-2)，合计约 19 万），而 CFData 官方模式是 /24 随机取一
- * （官方 15 段约 2.1 万）——"默认测试测 190532 个"即由此来。
+ * （在线列表 6534 条 /24 即 6534 个；内置官方 15 段回退 5956 个）——
+ * "默认测试测 190532 个"即由此来。
  */
 object OfficialIpList {
 
@@ -220,12 +221,52 @@ object OfficialIpList {
     }
 
     private fun formatIp(parsed: Cidr, hi: Long, lo: Long): String = if (parsed.isV6) {
-        val bytes = ByteArray(16)
-        for (i in 0 until 8) bytes[i] = ((hi ushr ((7 - i) * 8)) and 0xFF).toByte()
-        for (i in 0 until 8) bytes[8 + i] = ((lo ushr ((7 - i) * 8)) and 0xFF).toByte()
-        java.net.InetAddress.getByAddress(bytes).hostAddress
+        formatV6(hi, lo)
     } else {
         val v = lo
         "${(v ushr 24) and 0xFF}.${(v ushr 16) and 0xFF}.${(v ushr 8) and 0xFF}.${v and 0xFF}"
+    }
+
+    /**
+     * v6 128 位 → RFC 5952 规范文本：小写、组内无前导零、最长零段（长度 ≥2）
+     * 以 "::" 压缩（并列取最左）。不用 InetAddress.hostAddress——Java 输出
+     * 不压缩（如 "2400:cb00:0:0:0:0:0:0"），与 CFData/引擎 Rust 显示习惯不一致。
+     */
+    private fun formatV6(hi: Long, lo: Long): String {
+        val g = IntArray(8)
+        for (i in 0 until 4) g[i] = ((hi ushr ((3 - i) * 16)) and 0xFFFF).toInt()
+        for (i in 4 until 8) g[i] = ((lo ushr ((7 - i) * 16)) and 0xFFFF).toInt()
+        var bestStart = -1
+        var bestLen = 0
+        var curStart = -1
+        var curLen = 0
+        for (i in 0 until 8) {
+            if (g[i] == 0) {
+                if (curStart < 0) {
+                    curStart = i
+                    curLen = 1
+                } else {
+                    curLen++
+                }
+                if (curLen > bestLen) {
+                    bestStart = curStart
+                    bestLen = curLen
+                }
+            } else {
+                curStart = -1
+                curLen = 0
+            }
+        }
+        if (bestLen < 2) {
+            return g.joinToString(":") { it.toString(16) }
+        }
+        val head = (0 until bestStart).joinToString(":") { g[it].toString(16) }
+        val tail = ((bestStart + bestLen) until 8).joinToString(":") { g[it].toString(16) }
+        return when {
+            head.isEmpty() && tail.isEmpty() -> "::"
+            head.isEmpty() -> "::$tail"
+            tail.isEmpty() -> "$head::"
+            else -> "$head::$tail"
+        }
     }
 }
