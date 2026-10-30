@@ -318,7 +318,17 @@ fun AppRoot(viewModel: TestViewModel) {
         // 数据源对齐 CFData copyModal 随入口 tab：扫描结果 / 详细测试（延迟=avg，速度列=测速）
         val exportSources = buildList {
             if (uiState.results.isNotEmpty()) {
-                add(ExportSource(label = "扫描结果", items = uiState.results))
+                // 扫描结果同样提供合格筛选（对齐 CFData：复制合格结果三种模式均可用；
+                // 合格 = 已测速且速度 ≥ 当前模式阈值）
+                add(
+                    ExportSource(
+                        label = "扫描结果",
+                        items = uiState.results,
+                        isQualified = { item ->
+                            item.downloadSpeedMbps?.let { it >= settings.speedMin } == true
+                        },
+                    ),
+                )
             }
             if (dcState.results.isNotEmpty()) {
                 add(
@@ -326,7 +336,7 @@ fun AppRoot(viewModel: TestViewModel) {
                         label = "详细测试",
                         items = dcState.results.map { it.toExportItem() },
                         isQualified = { item ->
-                            item.downloadSpeedMbps?.let { it >= settings.officialSpeedMin } == true
+                            item.downloadSpeedMbps?.let { it >= settings.speedMin } == true
                         },
                     ),
                 )

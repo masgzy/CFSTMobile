@@ -3,9 +3,7 @@ package com.masgzy.cfstmobile.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,12 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -112,10 +109,10 @@ fun ResultsSection(
         }
 
         if (official) {
-            ScrollTable(
-                columns = listOf("IP", "端口", "数据中心", "落地区域", "地区", "城市", "扫描方式", "延迟"),
-                columnWidths = listOf(120.dp, 56.dp, 72.dp, 72.dp, 72.dp, 96.dp, 80.dp, 72.dp),
-                rows = scanRows.map { row ->
+            // 行/色列表用 remember 缓存：数千行下每次重组重建两个 O(n) 列表是主要开销
+            // （扫描行内容未变时直接复用）
+            val officialRows = remember(scanRows, scanModeLabel) {
+                scanRows.map { row ->
                     listOf(
                         row.ip,
                         row.port.toString(),
@@ -126,10 +123,17 @@ fun ResultsSection(
                         scanModeLabel,
                         "${fmt0(row.delayMs)}ms",
                     )
-                },
-                cellColors = scanRows.map { row ->
+                }
+            }
+            val officialColors = remember(scanRows, isHttping) {
+                scanRows.map { row ->
                     listOf(null, null, null, null, null, null, null, delayColor(row.delayMs, latencyColorFactor(isHttping, row.port, isOfficial = true, nsbTls = true)))
-                },
+                }
+            }
+            ScrollTable(
+                columns = listOf("IP", "端口", "数据中心", "落地区域", "地区", "城市", "扫描方式", "延迟"),
+                rows = officialRows,
+                cellColors = officialColors,
                 onCellClick = onIpPortCell,
             )
         } else {
@@ -143,10 +147,8 @@ fun ResultsSection(
                 addAll(listOf(120.dp, 56.dp, 64.dp, 80.dp, 80.dp, 80.dp, 150.dp, 72.dp))
                 if (!compactView) addAll(listOf(88.dp, 88.dp, 96.dp))
             }
-            ScrollTable(
-                columns = columns,
-                columnWidths = widths,
-                rows = scanRows.map { row ->
+            val nsbRows = remember(scanRows, scanModeLabel, compactView) {
+                scanRows.map { row ->
                     val base = listOf(
                         row.ip,
                         row.port.toString(),
@@ -162,8 +164,10 @@ fun ResultsSection(
                         row.region.ifEmpty { "-" },
                         row.city.ifEmpty { "-" },
                     )
-                },
-                cellColors = scanRows.map { row ->
+                }
+            }
+            val nsbColors = remember(scanRows, isHttping, compactView, s.nsbTls) {
+                scanRows.map { row ->
                     val colors = mutableListOf<Color?>(
                         null, null,
                         lossColor(row.lossRate),
@@ -174,7 +178,13 @@ fun ResultsSection(
                     )
                     if (!compactView) { colors.addAll(listOf(null, null, null)) }
                     colors
-                },
+                }
+            }
+            ScrollTable(
+                columns = columns,
+                columnWidths = widths,
+                rows = nsbRows,
+                cellColors = nsbColors,
                 onCellClick = onIpPortCell,
             )
         }
@@ -230,72 +240,50 @@ private fun DcSummaryTable(
         }
         Spacer(Modifier.height(8.dp))
 
-        Row(Modifier.fillMaxWidth()) {
-            listOf("数据中心", "落地区域", "城市", "IP数量", "最低延迟", "操作").forEach {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                )
-            }
+        // 汇总表体：ScrollTable 自动列宽（城市等长文本不再被 weight 均分截断），
+        // 操作列单元格点击 = 选择测试（对齐 CFData dcTable 自然宽度）
+        val summaryRows = dcList.map { dc ->
+            listOf(
+                dc.colo,
+                dc.country.ifEmpty { "-" },
+                dc.city.ifEmpty { "-" },
+                dc.ipCount.toString(),
+                "${dc.minLatencyMs}ms",
+                if (testingDc != null && testingDc.equals(dc.colo, ignoreCase = true)) {
+                    "测试中..."
+                } else if (dc.colo in testedDcs) {
+                    "重新测试"
+                } else {
+                    "选择测试"
+                },
+            )
         }
-        dcList.forEach { dc ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = dc.colo,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = dc.country.ifEmpty { "-" },
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                )
-                Text(
-                    text = dc.city.ifEmpty { "-" },
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                )
-                Text(text = dc.ipCount.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                Text(
-                    text = "${dc.minLatencyMs}ms",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = delayColor(dc.minLatencyMs.toDouble()),
-                    modifier = Modifier.weight(1f),
-                )
-                Box(modifier = Modifier.weight(1f)) {
-                    val testing = testingDc != null && testingDc.equals(dc.colo, ignoreCase = true)
+        val summaryColors = remember(dcList, testedDcs, testingDc) {
+            dcList.map { dc ->
+                val testing = testingDc != null && testingDc.equals(dc.colo, ignoreCase = true)
+                listOf(
+                    null, null, null, null,
+                    delayColor(dc.minLatencyMs.toDouble()),
                     if (testing) {
-                        Text(
-                            text = "测试中...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
-                        TextButton(
-                            onClick = { onSelect(dc.colo) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        ) {
-                            Text(
-                                text = if (dc.colo in testedDcs) "重新测试" else "选择测试",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                }
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
         }
+        ScrollTable(
+            columns = listOf("数据中心", "落地区域", "城市", "IP数量", "最低延迟", "操作"),
+            rows = summaryRows,
+            maxHeight = 260.dp,
+            cellColors = summaryColors,
+            onCellClick = { row, col ->
+                if (col != 5) return@ScrollTable
+                val dc = dcList.getOrNull(row) ?: return@ScrollTable
+                val testing = testingDc != null && testingDc.equals(dc.colo, ignoreCase = true)
+                if (!testing) onSelect(dc.colo)
+            },
+        )
     }
 }
 

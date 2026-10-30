@@ -18,11 +18,66 @@ class ExportFormatterTest {
         loss: Double = 0.0,
         delay: Double = 88.88,
         origin: String? = null,
+        country: String? = null,
+        region: String? = null,
+        city: String? = null,
+        asnNumber: String? = null,
+        asnOrg: String? = null,
     ) = CfstResultItem(
         ip = ip, port = port, sent = 4, received = 4,
         lossRate = loss, delayMs = delay, downloadSpeedMbps = speed, colo = colo,
+        country = country, region = region, city = city,
+        asnNumber = asnNumber, asnOrg = asnOrg,
         origin = origin,
     )
+
+    @Test
+    fun `txt geo and asn fields join with separator skipping empty`() {
+        val full = item(country = "United States", region = "California", city = "Los Angeles", asnNumber = "13335", asnOrg = "Cloudflare, Inc.")
+        val out = ExportFormatter.build(
+            listOf(full),
+            ExportFormatter.FORMAT_TXT,
+            ExportOptions(fields = listOf(ExportField.IPPORT, ExportField.DELAY, ExportField.DC, ExportField.COUNTRY, ExportField.REGION, ExportField.CITY, ExportField.ASN_NUMBER, ExportField.ASN_ORG)),
+        )
+        assertEquals(
+            "104.16.1.1:443#88.88-LAX-United States-California-Los Angeles-13335-Cloudflare, Inc.\n",
+            out,
+        )
+        // 部分字段缺失时跳过空值（CFData buildResultContent 语义）
+        val partial = item(country = "United States", city = null, asnNumber = null)
+        val out2 = ExportFormatter.build(
+            listOf(partial),
+            ExportFormatter.FORMAT_TXT,
+            ExportOptions(fields = listOf(ExportField.IPPORT, ExportField.DC, ExportField.COUNTRY, ExportField.CITY, ExportField.ASN_NUMBER)),
+        )
+        assertEquals("104.16.1.1:443#LAX-United States\n", out2)
+    }
+
+    @Test
+    fun `csv renders new geo and asn columns`() {
+        val out = ExportFormatter.build(
+            listOf(item(country = "United States", city = "Los Angeles", asnNumber = "13335", asnOrg = "Cloudflare")),
+            ExportFormatter.FORMAT_CSV,
+            ExportOptions(fields = listOf(ExportField.DC, ExportField.COUNTRY, ExportField.CITY, ExportField.ASN_NUMBER, ExportField.ASN_ORG)),
+        )
+        assertEquals("数据中心,落地区域,城市,ASN号码,ASN组织\nLAX,United States,Los Angeles,13335,Cloudflare\n", out)
+    }
+
+    @Test
+    fun `available fields only shows fields with data`() {
+        val bare = listOf(item(colo = null)) // 仅引擎原始字段
+        val fields1 = ExportFormatter.availableFields(bare)
+        org.junit.Assert.assertTrue(ExportField.IPPORT in fields1)
+        org.junit.Assert.assertTrue(ExportField.DC !in fields1)
+        org.junit.Assert.assertTrue(ExportField.ASN_NUMBER !in fields1)
+
+        val enriched = listOf(item(country = "United States", asnNumber = "13335", asnOrg = "Cloudflare"))
+        val fields2 = ExportFormatter.availableFields(enriched)
+        org.junit.Assert.assertTrue(ExportField.COUNTRY in fields2)
+        org.junit.Assert.assertTrue(ExportField.ASN_NUMBER in fields2)
+        org.junit.Assert.assertTrue(ExportField.ASN_ORG in fields2)
+        org.junit.Assert.assertTrue(ExportField.CITY !in fields2) // 无城市数据则不显示
+    }
 
     @Test
     fun `txt with colo appends hash section`() {

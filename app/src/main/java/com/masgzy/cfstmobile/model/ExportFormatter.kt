@@ -4,9 +4,13 @@ package com.masgzy.cfstmobile.model
  * 结果导出格式化（纯 Kotlin，JVM 单测覆盖）。
  *
  * 两种格式与主流工具互通，CFData-WEB 用户迁移零成本：
- * - TXT：CFData-WEB 默认等价格式 —— 每行 `IP:端口#数据中心`，附加字段以分隔符连接；
- *   无附加字段时只有 `IP:端口`。可直接粘贴进 edgetunnel 的 ADD.txt 优选订阅。
+ * - TXT：CFData-WEB 默认等价格式 —— 每行 `IP:端口#数据中心-落地区域`（附加字段以
+ *   分隔符连接，空值跳过）；无附加字段时只有 `IP:端口`。可直接粘贴进
+ *   edgetunnel 的 ADD.txt 优选订阅。
  * - CSV：XIU2/CloudflareST 传统 result.csv 列序（已发送/已接收/丢包率等）。
+ *
+ * 字段全集对齐 CFData RESULT_FIELDS 官方子集（含落地区域/地区/城市/ASN）；
+ * 弹窗内仅展示有数据的字段（对齐 CFData 字段可见性规则，见 [availableFields]）。
  *
  * 导出管线对齐 CFData-WEB buildResultContent：
  * IP 类型筛选 → 行区间切片（[startRow, endRow]，含端点）→ 按选中字段渲染。
@@ -19,7 +23,8 @@ object ExportFormatter {
     const val IP_V6 = "ipv6"
 
     /**
-     * 可选导出字段。label 即 CSV 表头（默认选择下与 XIU2/CFSTAPP result.csv 完全一致）。
+     * 可选导出字段（对齐 CFData RESULT_FIELDS 官方子集）。
+     * label 即 CSV 表头（默认选择下与 XIU2/CFSTAPP result.csv 完全一致）。
      */
     enum class ExportField(val label: String) {
         IPPORT("IP:PORT"),
@@ -31,11 +36,17 @@ object ExportFormatter {
         DELAY("平均延迟(ms)"),
         SPEED("下载速度(Mbps)"),
         DC("数据中心"),
+        COUNTRY("落地区域"),
+        REGION("地区"),
+        CITY("城市"),
+        ASN_NUMBER("ASN号码"),
+        ASN_ORG("ASN组织"),
         ORIGIN("原始输入"),
     }
 
-    /** TXT 默认字段：`IP:端口#数据中心`（CFData 兼容行格式） */
-    val DEFAULT_TXT_FIELDS: List<ExportField> = listOf(ExportField.IPPORT, ExportField.DC)
+    /** TXT 默认字段：`IP:端口#数据中心-落地区域`（对齐 CFData 官方模式 txt 默认 [ipport, dc, dcCountry]） */
+    val DEFAULT_TXT_FIELDS: List<ExportField> =
+        listOf(ExportField.IPPORT, ExportField.DC, ExportField.COUNTRY)
 
     /** CSV 默认字段：XIU2/CloudflareST result.csv 列序 */
     val DEFAULT_CSV_FIELDS: List<ExportField> = listOf(
@@ -141,8 +152,25 @@ object ExportFormatter {
         ExportField.DELAY -> fmt2(r.delayMs)
         ExportField.SPEED -> r.downloadSpeedMbps?.let { fmt2(it) }.orEmpty()
         ExportField.DC -> r.colo?.trim().orEmpty()
+        ExportField.COUNTRY -> r.country?.trim().orEmpty()
+        ExportField.REGION -> r.region?.trim().orEmpty()
+        ExportField.CITY -> r.city?.trim().orEmpty()
+        ExportField.ASN_NUMBER -> r.asnNumber?.trim().orEmpty()
+        ExportField.ASN_ORG -> r.asnOrg?.trim().orEmpty()
         ExportField.ORIGIN -> r.origin?.trim().orEmpty()
     }.trim()
+
+    /**
+     * 字段可见性（对齐 CFData：仅展示当前结果集中有非空值的字段，
+     * IP:PORT 恒可用）。供复制/导出弹窗字段选择器使用。
+     */
+    fun availableFields(items: List<CfstResultItem>): List<ExportField> =
+        ExportField.entries.filter { f ->
+            f == ExportField.IPPORT || items.any { item -> fieldValue(item, f).isNotEmpty() }
+        }
+
+    /** 字段取值（导出弹窗预览/可见性判断用，与 [txtValue] 同源） */
+    fun fieldValue(r: CfstResultItem, f: ExportField): String = txtValue(r, f)
 
     private fun csvValue(r: CfstResultItem, f: ExportField): String = when (f) {
         ExportField.IPPORT -> formatIpPort(r.ip, r.port, false)

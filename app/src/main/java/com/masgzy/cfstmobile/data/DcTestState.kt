@@ -45,6 +45,9 @@ fun DcTestItem.toExportItem(): com.masgzy.cfstmobile.model.CfstResultItem =
         delayMs = avgMs,
         downloadSpeedMbps = speedMbps,
         colo = colo.ifEmpty { null },
+        country = country.ifEmpty { null },
+        region = region.ifEmpty { null },
+        city = city.ifEmpty { null },
     )
 
 /** 扫描结果行（对齐 CFData 官方扫描表：IP/端口/数据中心/落地区域/地区/城市/扫描方式/延迟） */

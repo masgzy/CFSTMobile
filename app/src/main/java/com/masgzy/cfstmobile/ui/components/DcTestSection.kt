@@ -313,15 +313,9 @@ private fun DcResults(
         val isHttping =
             viewModel.settings.value.pingMode == com.masgzy.cfstmobile.data.UiSettings.PING_HTTP
         val nsbTls = viewModel.settings.value.nsbTls
-        ScrollTable(
-            columns = listOf(
-                "IP 地址", "端口", "数据中心", "落地区域", "地区", "城市",
-                "扫描方式", "丢包率", "最小延迟", "最大延迟", "平均延迟", "测速",
-            ),
-            columnWidths = listOf(
-                120.dp, 52.dp, 68.dp, 68.dp, 68.dp, 88.dp, 76.dp, 56.dp, 72.dp, 72.dp, 72.dp, 84.dp,
-            ),
-            rows = visible.map { item ->
+        // 行/色列表 remember 缓存（数千行时避免每次重组重建 O(n) 列表）
+        val detailRows = remember(visible, scanModeLabel) {
+            visible.map { item ->
                 listOf(
                     item.ip,
                     item.port.toString(),
@@ -336,8 +330,10 @@ private fun DcResults(
                     "${fmt0(item.avgMs)}ms",
                     item.speedMbps?.let { "${fmt2(it)}MB/s" } ?: "未测速",
                 )
-            },
-            cellColors = visible.map { item ->
+            }
+        }
+        val detailColors = remember(visible, isHttping, nsbTls) {
+            visible.map { item ->
                 val factor = latencyColorFactor(isHttping, item.port, isOfficial = true, nsbTls = nsbTls)
                 listOf(
                     null, null, null, null, null, null, null,
@@ -347,7 +343,15 @@ private fun DcResults(
                     delayColor(item.avgMs, factor),
                     item.speedMbps?.let { speedColor(it) },
                 )
-            },
+            }
+        }
+        ScrollTable(
+            columns = listOf(
+                "IP 地址", "端口", "数据中心", "落地区域", "地区", "城市",
+                "扫描方式", "丢包率", "最小延迟", "最大延迟", "平均延迟", "测速",
+            ),
+            rows = detailRows,
+            cellColors = detailColors,
             onCellClick = { row, col ->
                 when (col) {
                     0 -> visible.getOrNull(row)?.let { copyToClipboard(context, it.ip) }

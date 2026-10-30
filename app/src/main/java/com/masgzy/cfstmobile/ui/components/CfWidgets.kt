@@ -10,6 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,11 +62,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,6 +96,12 @@ import com.masgzy.cfstmobile.ui.theme.OkGreen
 internal val M3CardShape = RoundedCornerShape(20.dp)
 internal val M3FieldShape = RoundedCornerShape(12.dp)
 internal val M3ItemShape = RoundedCornerShape(14.dp)
+
+/** ScrollTable 自适应列宽：实测文本宽度外的余量（单元格呼吸空间） */
+internal val CELL_WIDTH_SLACK = 12.dp
+
+/** ScrollTable 自适应列宽上限（超长内容如原始输入域名以省略号截断） */
+internal val MAX_COLUMN_WIDTH = 200.dp
 
 // ---------------------------------------------------------------- 状态横幅
 
@@ -538,7 +548,15 @@ fun LogPanel(lines: List<String>, modifier: Modifier = Modifier) {
 // ---------------------------------------------------------------- 宽表格
 
 /**
- * 宽表格（横向滚动 + 纵向滚动，M3 tonal 容器）。
+ * 宽表格（横向滚动 + 纵向懒加载滚动，M3 tonal 容器）。
+ *
+ * 性能：数据行用 LazyColumn 懒组合（数千行仅组合可见项），替代旧版
+ * Column+verticalScroll 全量组合——6000 行 × 8 列 ≈ 5 万组合节点，
+ * 汇总阶段每次部分发布都全量重组，是「开始汇总时卡爆」的根因。
+ *
+ * 列宽：内容感知自适应——每列取最长单元格实测宽度（TextMeasurer），
+ * 与传入的 columnWidths（作为最小列宽）取大、上限封顶；长文本
+ * （如城市名）不再被省略号截断（对齐 CFData HTML 表格自然宽度）。
  * 每列固定宽度，表头与数据行同构对齐；适合 8~12 列的宽表。
  */
 @Composable
@@ -553,7 +571,35 @@ fun ScrollTable(
     onCellClick: ((row: Int, col: Int) -> Unit)? = null,
 ) {
     val hScroll = rememberScrollState()
-    val vScroll = rememberScrollState()
+    val bodyStyle = MaterialTheme.typography.bodySmall
+    val headerStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+
+    // 内容感知列宽：每列最长单元格实测（长文本列自动加宽），与最小列宽取大、上限封顶。
+    // 长度取最长的单个样本实测，O(单元格数) 字符串比较 + O(列数) 次测量，数千行下亚毫秒级
+    val effectiveWidths = remember(columns, rows, columnWidths) {
+        columns.indices.map { c ->
+            var longest: String? = null
+            var longestLen = -1
+            for (r in rows) {
+                val cell = r.getOrNull(c) ?: continue
+                if (cell.length > longestLen) {
+                    longestLen = cell.length
+                    longest = cell
+                }
+            }
+            val header = columns[c]
+            val isHeader = longest == null || longestLen <= header.length
+            val sample = if (isHeader) header else longest!!
+            val style = if (isHeader) headerStyle else bodyStyle
+            val measured = with(density) { textMeasurer.measure(sample, style).size.width.toDp() }
+            (measured + CELL_WIDTH_SLACK)
+                .coerceAtLeast(columnWidths.getOrElse(c) { 88.dp })
+                .coerceAtMost(MAX_COLUMN_WIDTH)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -572,7 +618,7 @@ fun ScrollTable(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(columnWidths[index]),
+                    modifier = Modifier.width(effectiveWidths[index]),
                     maxLines = 1,
                 )
             }
@@ -581,7 +627,7 @@ fun ScrollTable(
             // 横向滚动容器内 fillMaxWidth 无效（宽度约束无限），
             // 空态 Box 必须给定列总宽才能真居中，否则「暂无结果」贴左。
             Box(
-                modifier = Modifier.width(columnWidths.reduce { a, b -> a + b }).height(72.dp),
+                modifier = Modifier.width(effectiveWidths.reduce { a, b -> a + b }).height(72.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -591,47 +637,55 @@ fun ScrollTable(
                 )
             }
         } else {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = maxHeight)
-                    .verticalScroll(vScroll),
-            ) {
-                rows.forEachIndexed { index, cells ->
-                    Row(
-                        modifier = Modifier
-                            .clickable(enabled = onRowClick != null) { onRowClick?.invoke(index) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        cells.forEachIndexed { cellIndex, cell ->
-                            // 单元格级点击（对齐 CFData：仅 IP/端口可点复制）优先于整行
-                            val cellClickable = onCellClick != null
-                            Text(
-                                text = cell,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = if (cellColors != null) FontWeight.SemiBold else null,
-                                color = cellColors?.getOrNull(index)?.getOrNull(cellIndex)
-                                    ?: MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier
-                                    .width(columnWidths[cellIndex])
-                                    .let { m ->
-                                        if (cellClickable) {
-                                            m.clickable(
-                                                interactionSource = remember { MutableInteractionSource() },
-                                                indication = ripple(),
-                                            ) { onCellClick?.invoke(index, cellIndex) }
-                                        } else {
-                                            m
-                                        }
-                                    },
+            // LazyColumn 需要确定宽度约束（外层 horizontalScroll 给出无限宽），
+            // 用列总宽 Box 包裹；纵向数据行懒组合，仅可见行参与重组
+            Box(modifier = Modifier.width(effectiveWidths.reduce { a, b -> a + b })) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = maxHeight),
+                ) {
+                    itemsIndexed(rows) { index, cells ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = onRowClick != null) { onRowClick?.invoke(index) },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                cells.forEachIndexed { cellIndex, cell ->
+                                    // 单元格级点击（对齐 CFData：仅 IP/端口可点复制）优先于整行
+                                    val cellClickable = onCellClick != null
+                                    Text(
+                                        text = cell,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontWeight = if (cellColors != null) FontWeight.SemiBold else null,
+                                        color = cellColors?.getOrNull(index)?.getOrNull(cellIndex)
+                                            ?: MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier
+                                            .width(effectiveWidths[cellIndex])
+                                            .let { m ->
+                                                if (cellClickable) {
+                                                    m.clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = ripple(),
+                                                    ) { onCellClick?.invoke(index, cellIndex) }
+                                                } else {
+                                                    m
+                                                }
+                                            },
+                                    )
+                                }
+                            }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                             )
                         }
                     }
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                    )
                 }
             }
         }

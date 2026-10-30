@@ -116,6 +116,7 @@ dependencies {
     // 调色引擎（ImageToolbox 同款，经 masgzy/AnythingMobile 同源验证的 5.0.1）：
     // material-kolor 提供 toColorScheme；material-color-utilities 提供
     // HCT/TonalPalette/DynamicScheme/Scheme* 九种调色板风格。
+    implementation("com.maxmind.db:maxmind-db:4.2.0")
     implementation("com.materialkolor:material-kolor:5.0.1")
     implementation("com.materialkolor:material-color-utilities:5.0.1")
 

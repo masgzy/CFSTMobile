@@ -15,6 +15,7 @@ import com.masgzy.cfstmobile.data.DcSortKey
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestItem
 import com.masgzy.cfstmobile.data.DcTestUiState
+import com.masgzy.cfstmobile.data.AsnDb
 import com.masgzy.cfstmobile.data.GithubClient
 import com.masgzy.cfstmobile.data.GithubStore
 import com.masgzy.cfstmobile.data.HistoryRecord
@@ -611,10 +612,12 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
             val missing = items.filter { it.colo.isNullOrBlank() }
             var colos: Map<String, String> = emptyMap()
             if (missing.isNotEmpty()) {
-                // 渐进式：边探测边发布部分聚合（扫描 Tab 的汇总表随进度逐渐完整，
-                // 位置列由最终聚合补齐）；对齐 CFData 汇总随扫描就绪的体验
+                // 渐进式：边探测边低频发布部分聚合（扫描 Tab 的汇总表随进度逐渐完整，
+                // 位置列由最终聚合补齐）；对齐 CFData 汇总随扫描就绪的体验。
+                // colo 同步回写 uiState.results，保证导出弹窗的数据中心列实时可用
                 colos = probeColos(missing) { partial ->
                     val partialEnriched = items.map { it.copy(colo = it.colo ?: partial[it.address()]) }
+                    _uiState.update { st -> st.copy(results = partialEnriched) }
                     _dcState.update { st ->
                         st.copy(dcList = aggregateDcList(partialEnriched, emptyMap()))
                     }
@@ -622,9 +625,26 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             dcLocations = locationsDeferred.await()
-            val enriched = items.map { it.copy(colo = it.colo ?: colos[it.address()]) }
+            // GeoLite2-ASN 离线查询（下载/解析失败降级为无 ASN 列，不影响主流程）
+            val asnByIp = runCatching { AsnDb.lookupAll(getApplication(), items.map { it.ip }) }
+                .getOrDefault(emptyMap())
+            val enriched = items.map { item ->
+                val colo = item.colo ?: colos[item.address()]
+                val loc = dcLocations[colo?.uppercase(Locale.US)]
+                val asn = asnByIp[item.ip]
+                item.copy(
+                    colo = colo,
+                    country = loc?.let { it.country.ifEmpty { it.cca2 }.ifEmpty { null } },
+                    region = loc?.region?.takeIf { it.isNotEmpty() },
+                    city = loc?.city?.takeIf { it.isNotEmpty() },
+                    asnNumber = asn?.number,
+                    asnOrg = asn?.org?.takeIf { it.isNotEmpty() },
+                )
+            }
             val dcList = aggregateDcList(enriched, dcLocations)
             dcEnriched = enriched
+            // 终态回写（含落地区域/地区/城市/ASN），供导出/复制直接使用
+            _uiState.update { st -> st.copy(results = enriched) }
             refreshScanRows()
             if (dcList.isEmpty()) {
                 _dcState.update {
@@ -658,25 +678,33 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         val done = AtomicInteger(0)
         val total = items.size
         _dcState.update { it.copy(probeDone = 0, probeTotal = total) }
-        val sem = Semaphore(DC_PROBE_CONCURRENCY)
-        val lastPublished = AtomicInteger(0)
         coroutineScope {
-            items.forEach { item ->
-                launch {
-                    sem.withPermit {
-                        val colo = DcProbe.fetchColo(item.ip, item.port)
-                        if (colo != null) out[item.address()] = colo
-                        val d = done.incrementAndGet()
-                        _dcState.update { it.copy(probeDone = d, probeTotal = total) }
-                        // 每完成一批就发布一次部分聚合（避免每 IP 全量重聚合开销）
-                        if (d - lastPublished.get() >= PARTIAL_PUBLISH_BATCH) {
-                            lastPublished.set(d)
-                            onPartial(out.toMap())
+            // 固定节奏发布器：每 [PARTIAL_PUBLISH_INTERVAL_MS] 发布一次进度 + 部分聚合。
+            // 替代逐 IP 状态更新（高并发下每秒数百次重组直接卡死主线程），
+            // 也消除批计数非原子导致的重复发布
+            val publisher = launch {
+                while (true) {
+                    delay(PARTIAL_PUBLISH_INTERVAL_MS)
+                    _dcState.update { it.copy(probeDone = done.get(), probeTotal = total) }
+                    if (out.isNotEmpty()) onPartial(out.toMap())
+                }
+            }
+            try {
+                val sem = Semaphore(DC_PROBE_CONCURRENCY)
+                items.forEach { item ->
+                    launch {
+                        sem.withPermit {
+                            val colo = DcProbe.fetchColo(item.ip, item.port)
+                            if (colo != null) out[item.address()] = colo
+                            done.incrementAndGet()
                         }
                     }
                 }
+            } finally {
+                publisher.cancel()
             }
         }
+        _dcState.update { it.copy(probeDone = total, probeTotal = total) }
         onPartial(out.toMap())
         return out
     }
@@ -1032,8 +1060,8 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         /** 数据中心 colo 探测并发（汇总提速：50 → 128，trace 为短连接轻请求） */
         const val DC_PROBE_CONCURRENCY = 128
 
-        /** colo 探测渐进聚合发布批次（每完成 N 个发布一次部分聚合） */
-        const val PARTIAL_PUBLISH_BATCH = 32
+        /** colo 探测渐进聚合发布间隔（固定节奏发布进度与部分聚合，避免高并发下频繁重组卡顿） */
+        const val PARTIAL_PUBLISH_INTERVAL_MS = 400L
 
         /** 详细测试（选中 DC 的 IP 延迟精测）并发，保持对齐 CFData runBoundedWorkers */
         const val DC_CONCURRENCY = 50

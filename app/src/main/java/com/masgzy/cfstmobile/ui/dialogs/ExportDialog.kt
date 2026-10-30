@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -134,6 +135,9 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
     }
     val exportedCount = remember(content) { content.lines().count { it.isNotBlank() } }
     val preview = remember(content) { content.lines().take(6).joinToString("\n") }
+
+    // 字段可见性（对齐 CFData：仅展示当前结果集中有值的字段，IP:PORT 恒可用）
+    val availableFields = remember(filteredItems) { ExportFormatter.availableFields(filteredItems) }
 
     // ---------------- edgetunnel 状态 ----------------
     var accounts by remember { mutableStateOf(store.load()) }
@@ -276,14 +280,33 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
                         }
                 }
             }
-            // 字段选择（选择顺序即输出列序；TXT 的 IP:PORT 恒为首列）
+            // 字段选择（选择顺序即输出列序；TXT 的 IP:PORT 恒为首列）。
+            // 快捷操作对齐 CFData：全选 / 仅 IP:PORT / 默认选择
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TextButton(onClick = { fieldOrder = availableFields.toList() }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("全选", style = MaterialTheme.typography.labelSmall) }
+                TextButton(
+                    onClick = { fieldOrder = listOf(ExportFormatter.ExportField.IPPORT) },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) { Text("仅 IP:PORT", style = MaterialTheme.typography.labelSmall) }
+                TextButton(
+                    onClick = {
+                        fieldOrder = if (format == FORMAT_CSV) ExportFormatter.DEFAULT_CSV_FIELDS else ExportFormatter.DEFAULT_TXT_FIELDS
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) { Text("默认选择", style = MaterialTheme.typography.labelSmall) }
+            }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ExportField.entries.forEach { f ->
+                availableFields.forEach { f ->
+                    val locked = f == ExportFormatter.ExportField.IPPORT
                     FilterChip(
-                        selected = f in fieldOrder,
+                        selected = f in fieldOrder || locked,
+                        enabled = !locked,
                         onClick = {
                             fieldOrder = if (f in fieldOrder) fieldOrder - f else fieldOrder + f
                         },
