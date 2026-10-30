@@ -136,6 +136,9 @@ data class DcTestUiState(
     val speedBatchDone: Int = 0,
     val speedBatchTotal: Int = 0,
     val message: String? = null,
+    /** 详细测试表筛选排序状态（对齐 CFData 1.8.4 筛选排序合一弹窗 officialTest*Filter） */
+    val tableFilter: TableFilterState = TableFilterState(),
+    val sortPriorities: SortPriorities = SortPriorities(),
 ) {
     /** 探测/测试进行中（关闭对话框前需要请求取消） */
     val busy: Boolean get() = step == DcStep.PROBING_COLO || step == DcStep.TESTING

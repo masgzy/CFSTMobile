@@ -16,7 +16,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +35,8 @@ import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestUiState
 import com.masgzy.cfstmobile.data.ScanRow
 import com.masgzy.cfstmobile.data.UiSettings
+import com.masgzy.cfstmobile.data.matchesTableFilter
+import com.masgzy.cfstmobile.ui.dialogs.SortFilterDialog
 import com.masgzy.cfstmobile.ui.theme.delayColor
 import com.masgzy.cfstmobile.ui.theme.lossColor
 import com.masgzy.cfstmobile.ui.theme.speedColor
@@ -58,6 +64,22 @@ fun ResultsSection(
     val isHttping = s.pingMode == UiSettings.PING_HTTP
     val scanModeLabel = if (isHttping) "HTTPing" else "TCPing"
 
+    // 非标筛选排序状态（对齐 CFData 1.8.4 筛选排序合一弹窗；官方扫描表无此入口）
+    var showSortDialog by remember { mutableStateOf(false) }
+    val nsbFilter by viewModel.nsbTableFilter.collectAsState()
+    val nsbPriorities by viewModel.nsbSortPriorities.collectAsState()
+    val speedMin = s.speedMin
+    // 行源：非标按筛选状态过滤（严格小于，0ms/100% 不限制）；官方扫描表全量展示
+    val visibleRows = remember(scanRows, official, nsbFilter, speedMin) {
+        if (official || nsbFilter.isDefault) {
+            scanRows
+        } else {
+            scanRows.filter {
+                matchesTableFilter(it.lossRate * 100, it.delayMs, it.speedMbps, speedMin, nsbFilter)
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         // ---------------- 数据中心汇总（对齐 #dcSection：dcList 非空才显示；渐进聚合时随进度出现） ----------------
         if (official && dcState.dcList.isNotEmpty()) {
@@ -78,11 +100,21 @@ fun ResultsSection(
         ) {
             Text("扫描结果", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
-            CountBadge(scanRows.size)
+            CountBadge(visibleRows.size)
         }
         Spacer(Modifier.height(8.dp))
 
+        // 按钮组（对齐 CFData：非标 tab = 筛选排序/一键复制/结果操作；官方扫描 tab = 后两者）
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!official) {
+                GreenButton(
+                    text = "筛选排序",
+                    icon = R.drawable.ic_sym_tune,
+                    enabled = scanRows.isNotEmpty(),
+                    onClick = { showSortDialog = true },
+                    modifier = Modifier.weight(1f),
+                )
+            }
             GreenButton(
                 text = "一键复制",
                 icon = R.drawable.ic_sym_content_copy,
@@ -103,8 +135,8 @@ fun ResultsSection(
         // 复制回调：仅 IP 列复制 IP、端口列复制端口（对齐 CFData copy-ip 单元格语义）
         val onIpPortCell: (Int, Int) -> Unit = { row, col ->
             when (col) {
-                0 -> scanRows.getOrNull(row)?.let { copyToClipboard(context, it.ip) }
-                1 -> scanRows.getOrNull(row)?.let { copyToClipboard(context, it.port.toString()) }
+                0 -> visibleRows.getOrNull(row)?.let { copyToClipboard(context, it.ip) }
+                1 -> visibleRows.getOrNull(row)?.let { copyToClipboard(context, it.port.toString()) }
             }
         }
 
@@ -147,8 +179,8 @@ fun ResultsSection(
                 addAll(listOf(120.dp, 56.dp, 64.dp, 80.dp, 80.dp, 80.dp, 150.dp, 72.dp))
                 if (!compactView) addAll(listOf(88.dp, 88.dp, 96.dp))
             }
-            val nsbRows = remember(scanRows, scanModeLabel, compactView) {
-                scanRows.map { row ->
+            val nsbRows = remember(visibleRows, scanModeLabel, compactView) {
+                visibleRows.map { row ->
                     val base = listOf(
                         row.ip,
                         row.port.toString(),
@@ -166,8 +198,8 @@ fun ResultsSection(
                     )
                 }
             }
-            val nsbColors = remember(scanRows, isHttping, compactView, s.nsbTls) {
-                scanRows.map { row ->
+            val nsbColors = remember(visibleRows, isHttping, compactView, s.nsbTls) {
+                visibleRows.map { row ->
                     val colors = mutableListOf<Color?>(
                         null, null,
                         lossColor(row.lossRate),
@@ -186,6 +218,20 @@ fun ResultsSection(
                 rows = nsbRows,
                 cellColors = nsbColors,
                 onCellClick = onIpPortCell,
+            )
+        }
+
+        // 筛选排序合一弹窗（对齐 CFData openSortModal('nsb')）
+        if (showSortDialog) {
+            SortFilterDialog(
+                title = "非标测速 筛选排序",
+                filter = nsbFilter,
+                priorities = nsbPriorities,
+                onApply = { f, p ->
+                    viewModel.applyNsbFilterSort(f, p)
+                    showSortDialog = false
+                },
+                onDismiss = { showSortDialog = false },
             )
         }
     }

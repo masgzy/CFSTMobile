@@ -23,8 +23,12 @@ import com.masgzy.cfstmobile.data.HistoryStore
 import com.masgzy.cfstmobile.data.OfficialIpList
 import com.masgzy.cfstmobile.data.ScanRow
 import com.masgzy.cfstmobile.data.SettingsRepository
+import com.masgzy.cfstmobile.data.SortPriorities
+import com.masgzy.cfstmobile.data.TableFilterState
 import com.masgzy.cfstmobile.data.UiSettings
 import com.masgzy.cfstmobile.data.aggregateDcList
+import com.masgzy.cfstmobile.data.compareDcByPriorities
+import com.masgzy.cfstmobile.data.compareNsbByPriorities
 import com.masgzy.cfstmobile.data.sortDcResults
 import com.masgzy.cfstmobile.engine.CompactSessionFactory
 import com.masgzy.cfstmobile.engine.CompactSessionHandle
@@ -156,6 +160,10 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     private val _toast = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val toast: SharedFlow<String> = _toast.asSharedFlow()
 
+    /** 错误/冲突提示（对齐 CFData 1.8.5「服务端错误统一弹窗提示」：居中模态卡「知道了」，不自动消失） */
+    private val _notice = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val notice: SharedFlow<String> = _notice.asSharedFlow()
+
     // ------------------------------------------------------ 地址库精简
 
     private val _compactState = MutableStateFlow(CompactUiState(libCount = compactLibrary.subnetCount()))
@@ -220,7 +228,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     fun loadConfigSnapshot(id: String) {
         val saved = configBackup.load(id)
         if (saved == null) {
-            _toast.tryEmit("配置不存在或已损坏")
+            _notice.tryEmit("配置不存在或已损坏")
             return
         }
         _settings.value = saved
@@ -251,7 +259,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         if (_uiState.value.isRunning) return
         val s = _settings.value
         s.validate()?.let { error ->
-            _toast.tryEmit(error)
+            _notice.tryEmit(error)
             return
         }
         resetDcTest()
@@ -268,7 +276,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
                 urlTargets = runCatching { fetchTextLines(s.nsbSourceUrl.trim()) }
                     .getOrElse {
                         log("网络 URL 获取失败：${it.message ?: "网络错误"}")
-                        withContext(Dispatchers.Main) { _toast.tryEmit("URL 获取失败：${it.message ?: "网络错误"}") }
+                        withContext(Dispatchers.Main) { _notice.tryEmit("URL 获取失败：${it.message ?: "网络错误"}") }
                         _uiState.update { it.copy(isRunning = false, phase = "idle") }
                         return@launch
                     }
@@ -434,13 +442,13 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         if (_compactState.value.running) return
         val s = _settings.value
         if (!s.official || s.ipType != UiSettings.IP_V4) {
-            _toast.tryEmit("精简地址库仅支持官方 IPv4 地址库")
+            _notice.tryEmit("精简地址库仅支持官方 IPv4 地址库")
             return
         }
         // 对齐 CFData：精简对象 = 本地 ips-v4.txt（缓存优先，离线回退内置段），覆盖后后续扫描直接复用
         val content = OfficialIpList.fetchContent(getApplication(), isV6 = false)
         if (content.isNullOrBlank()) {
-            _toast.tryEmit("地址库拉取失败（无网络且无本地缓存）")
+            _notice.tryEmit("地址库拉取失败（无网络且无本地缓存）")
             return
         }
         compactJob?.cancel()
@@ -600,7 +608,7 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         if (_dcState.value.busy) return
         val items = _uiState.value.results
         if (items.isEmpty()) {
-            _toast.tryEmit("暂无测速结果，先完成一次测速")
+            _notice.tryEmit("暂无测速结果，先完成一次测速")
             return
         }
         log("数据中心测试：开始识别 ${items.size} 个结果的归属")
@@ -815,17 +823,17 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         if (_dcState.value.speedBatchRunning) return
         val existing = _dcState.value.results
         if (existing.isEmpty()) {
-            _toast.tryEmit("当前没有可测速的结果")
+            _notice.tryEmit("当前没有可测速的结果")
             return
         }
         val targets = if (continued) existing.filter { it.speedMbps == null } else existing
         if (targets.isEmpty()) {
-            _toast.tryEmit("没有未测速的 IP，全部已测过")
+            _notice.tryEmit("没有未测速的 IP，全部已测过")
             return
         }
         val s = _settings.value
         if (!s.downloadEnabled) {
-            _toast.tryEmit("请先在参数区开启测速（测速结果数量 > 0）")
+            _notice.tryEmit("请先在参数区开启测速（测速结果数量 > 0）")
             return
         }
         dcJob?.cancel()
@@ -982,6 +990,42 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
         dcSortKey = key
         _dcState.update {
             it.copy(results = it.results.toMutableList().also { list -> sortDcResults(list, key) })
+        }
+    }
+
+    // ---------------- 结果区「筛选排序」合一弹窗（对齐 CFData 1.8.4 openSortModal） ----------------
+
+    /** 非标扫描结果表筛选排序状态（对齐 nsbTable*Filter 四件套；筛选作用于显示与徽章） */
+    val nsbTableFilter = MutableStateFlow(TableFilterState())
+    val nsbSortPriorities = MutableStateFlow(SortPriorities())
+
+    /**
+     * 应用非标结果筛选排序（对齐 applySortModal('nsb')）：
+     * 排序就地重排 results（复制/导出共享行序），筛选由 ResultsSection 按 [nsbTableFilter] 应用。
+     */
+    fun applyNsbFilterSort(filter: TableFilterState, priorities: SortPriorities) {
+        nsbTableFilter.value = filter
+        nsbSortPriorities.value = priorities
+        _uiState.update {
+            it.copy(
+                results = it.results.sortedWith { a, b ->
+                    compareNsbByPriorities(a, b, priorities.keys)
+                },
+            )
+        }
+        refreshScanRows()
+    }
+
+    /** 应用详细测试结果筛选排序（对齐 applySortModal('official')，状态存于 DcTestUiState） */
+    fun applyDcFilterSort(filter: TableFilterState, priorities: SortPriorities) {
+        _dcState.update {
+            it.copy(
+                tableFilter = filter,
+                sortPriorities = priorities,
+                results = it.results.sortedWith { a, b ->
+                    compareDcByPriorities(a, b, priorities.keys)
+                },
+            )
         }
     }
 

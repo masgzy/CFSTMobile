@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
@@ -28,10 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.masgzy.cfstmobile.R
-import com.masgzy.cfstmobile.data.DcSortKey
 import com.masgzy.cfstmobile.data.DcStep
 import com.masgzy.cfstmobile.data.DcTestItem
 import com.masgzy.cfstmobile.data.DcTestUiState
+import com.masgzy.cfstmobile.data.matchesTableFilter
+import com.masgzy.cfstmobile.ui.dialogs.SortFilterDialog
 import com.masgzy.cfstmobile.ui.theme.delayColor
 import com.masgzy.cfstmobile.ui.theme.lossColor
 import com.masgzy.cfstmobile.ui.theme.speedColor
@@ -39,18 +38,13 @@ import com.masgzy.cfstmobile.viewmodel.TestViewModel
 
 /**
  * 详细测试结果区（对齐 CFData-WEB #test tab 官方结构）：
- * 标题「详细测试结果」+ 徽章 + 合格筛选下拉 + 动作按钮组
- * （一键测速/继续测速/一键排序/一键复制/结果操作，Material Symbols 图标）+
+ * 标题「详细测试结果」+ 徽章 + 筛选排序合一弹窗（1.8.4 openSortModal）+ 动作按钮组
+ * （一键测速/继续测速/筛选排序/一键复制/结果操作，Material Symbols 图标）+
  * 12 列宽表：IP 地址/端口/数据中心/落地区域/地区/城市/扫描方式/丢包率/
  * 最小延迟/最大延迟/平均延迟/测速。
  * 颜色对齐 CFData：丢包率/min/max/avg 延迟（httping 除以倍率）/测速分级色；
  * 仅 IP/端口单元格可点复制；一键复制打开带选项的复制弹窗。
  */
-
-/** 合格筛选（对齐 officialTestQualifiedFilter） */
-private const val FILTER_ALL = "all"
-private const val FILTER_QUALIFIED = "qualified"
-private const val FILTER_UNQUALIFIED = "unqualified"
 
 @Composable
 fun DcTestSection(
@@ -164,17 +158,19 @@ private fun DcResults(
     onExportClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    var filter by remember { mutableStateOf(FILTER_ALL) }
-    var showSortMenu by remember { mutableStateOf(false) }
+    val tableFilter = state.tableFilter
+    val sortPriorities = state.sortPriorities
+    var showSortDialog by remember { mutableStateOf(false) }
 
-    val qualified: (DcTestItem) -> Boolean = { item ->
-        item.speedMbps?.let { it >= speedMinMbps } == true
-    }
-    val visible = state.results.filter {
-        when (filter) {
-            FILTER_QUALIFIED -> qualified(it)
-            FILTER_UNQUALIFIED -> !qualified(it)
-            else -> true
+    // 展示行：筛选排序弹窗状态过滤（对齐 officialTest*Filter：合格=已测速≥阈值；
+    // 延迟低于/丢包低于为严格小于，0ms/100% 不限制）
+    val visible = remember(state.results, tableFilter, speedMinMbps) {
+        if (tableFilter.isDefault) {
+            state.results
+        } else {
+            state.results.filter {
+                matchesTableFilter(it.lossRate * 100, it.avgMs, it.speedMbps, speedMinMbps, tableFilter)
+            }
         }
     }
     val scanModeLabel =
@@ -228,24 +224,7 @@ private fun DcResults(
         }
         Spacer(Modifier.height(8.dp))
 
-        // ---------------- 合格筛选（对齐 officialTestQualifiedFilter） ----------------
-        CfDropdown(
-            label = null,
-            selected = when (filter) {
-                FILTER_QUALIFIED -> "仅展示合格"
-                FILTER_UNQUALIFIED -> "仅展示不合格"
-                else -> "展示全部结果"
-            },
-            options = listOf(
-                CfOption("展示全部结果", FILTER_ALL),
-                CfOption("仅展示合格", FILTER_QUALIFIED),
-                CfOption("仅展示不合格", FILTER_UNQUALIFIED),
-            ),
-            onSelect = { o -> filter = o.value },
-        )
-        Spacer(Modifier.height(8.dp))
-
-        // ---------------- 动作按钮组（对齐 .table-actions 五钮；双列网格 + Material Symbols 图标） ----------------
+        // ---------------- 动作按钮组（对齐 .table-actions：筛选排序/一键复制/结果操作合一） ----------------
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GreenButton(
@@ -264,34 +243,13 @@ private fun DcResults(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.weight(1f)) {
-                    GreenButton(
-                        text = "一键排序",
-                        icon = R.drawable.ic_sym_swap_vert,
-                        enabled = visible.isNotEmpty(),
-                        onClick = { showSortMenu = true },
-                    )
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false },
-                    ) {
-                        listOf(
-                            "丢包率" to DcSortKey.LOSS,
-                            "最低延迟" to DcSortKey.MIN,
-                            "平均延迟" to DcSortKey.AVG,
-                            "最大延迟" to DcSortKey.MAX,
-                            "下载速度" to DcSortKey.SPEED,
-                        ).forEach { (label, key) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    viewModel.sortDcResults(key)
-                                    showSortMenu = false
-                                },
-                            )
-                        }
-                    }
-                }
+                GreenButton(
+                    text = "筛选排序",
+                    icon = R.drawable.ic_sym_tune,
+                    enabled = state.results.isNotEmpty(),
+                    onClick = { showSortDialog = true },
+                    modifier = Modifier.weight(1f),
+                )
                 GreenButton(
                     text = "一键复制",
                     icon = R.drawable.ic_sym_content_copy,
@@ -359,5 +317,19 @@ private fun DcResults(
                 }
             },
         )
+
+        // 筛选排序合一弹窗（对齐 CFData openSortModal('official')）
+        if (showSortDialog) {
+            SortFilterDialog(
+                title = "官方详细测试 筛选排序",
+                filter = tableFilter,
+                priorities = sortPriorities,
+                onApply = { f, p ->
+                    viewModel.applyDcFilterSort(f, p)
+                    showSortDialog = false
+                },
+                onDismiss = { showSortDialog = false },
+            )
+        }
     }
 }

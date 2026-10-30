@@ -59,6 +59,8 @@ import com.masgzy.cfstmobile.data.EtAccount
 import com.masgzy.cfstmobile.data.GhConfig
 import com.masgzy.cfstmobile.data.GithubClient
 import com.masgzy.cfstmobile.data.GithubStore
+import com.masgzy.cfstmobile.data.SortPriorities
+import com.masgzy.cfstmobile.data.compareNsbByPriorities
 import com.masgzy.cfstmobile.model.CfstResultItem
 import com.masgzy.cfstmobile.model.ExportFormatter
 import com.masgzy.cfstmobile.model.ExportFormatter.ExportField
@@ -74,6 +76,8 @@ data class ExportSource(
     val label: String,
     val items: List<CfstResultItem>,
     val isQualified: ((CfstResultItem) -> Boolean)? = null,
+    /** 官方扫描源：复制/导出行序按「有速度降序优先，再延迟升序」（对齐 CFData compareOfficialResultObjects） */
+    val speedFirstOrder: Boolean = false,
 )
 
 /**
@@ -105,19 +109,41 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
     var endRowText by remember { mutableStateOf("0") }
     var ipFilter by remember { mutableStateOf(ExportFormatter.IP_ALL) }
     var qualifiedFilter by remember { mutableStateOf("all") }
+    var latencyFilterText by remember { mutableStateOf("0") }
+    var lossFilterText by remember { mutableStateOf("100") }
     var txtSeparator by remember { mutableStateOf("-") }
     var ipv6Brackets by remember { mutableStateOf(false) }
     var customFieldsText by remember { mutableStateOf("") }
 
+    // 行序：官方扫描源按「有速度降序优先，再延迟升序」重排（对齐 CFData compareOfficialResultObjects，
+    // 与表格的延迟升序展示序分离；非标源保持筛选排序弹窗就地重排后的行序）
+    val orderedItems = remember(source) {
+        if (source.speedFirstOrder) {
+            source.items.sortedWith { a, b ->
+                compareNsbByPriorities(a, b, listOf(SortPriorities.KEY_SPEED, SortPriorities.KEY_DELAY))
+            }
+        } else {
+            source.items
+        }
+    }
+
+    // 延迟/丢包筛选（对齐 CFData 1.8.4 导出弹窗 resultLatencyFilter/resultLossFilter：严格小于，0/100 不限制）
+    val latencyLimit = latencyFilterText.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+    val lossLimitRaw = lossFilterText.toDoubleOrNull()?.coerceIn(0.0, 100.0) ?: 100.0
+    val lossLimit = if (lossLimitRaw <= 0.0) 0.01 else lossLimitRaw
+
     // 合格筛选（对齐 CFData 复制合格结果：全部/仅合格/仅不合格）在 ipFilter 之前生效
-    val filteredItems = remember(source, ipFilter, qualifiedFilter) {
-        source.items.filter { r ->
+    val filteredItems = remember(orderedItems, ipFilter, qualifiedFilter, latencyLimit, lossLimit) {
+        orderedItems.filter { r ->
             val passQualified = when (qualifiedFilter) {
                 "qualified" -> source.isQualified?.invoke(r) ?: true
                 "unqualified" -> source.isQualified?.let { !it(r) } ?: false
                 else -> true
             }
-            passQualified && (ipFilter == ExportFormatter.IP_ALL || ExportFormatter.ipVersion(r.ip) == ipFilter)
+            val passLatency = latencyLimit <= 0 || r.delayMs < latencyLimit
+            val passLoss = lossLimit >= 100 || r.lossRate * 100 < lossLimit
+            passQualified && passLatency && passLoss &&
+                (ipFilter == ExportFormatter.IP_ALL || ExportFormatter.ipVersion(r.ip) == ipFilter)
         }
     }
 
@@ -279,6 +305,25 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
                             )
                         }
                 }
+            }
+            // 延迟/丢包筛选（对齐 CFData 1.8.4 同步导出弹窗 resultLatencyFilter/resultLossFilter）
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = latencyFilterText,
+                    onValueChange = { latencyFilterText = it.filter(Char::isDigit).take(6) },
+                    label = { Text("延迟低于(ms,0=不限)") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = lossFilterText,
+                    onValueChange = { lossFilterText = it.filter { c -> c.isDigit() || c == '.' }.take(6) },
+                    label = { Text("丢包低于(%,100=不限)") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                )
             }
             // 字段选择（选择顺序即输出列序；TXT 的 IP:PORT 恒为首列）。
             // 快捷操作对齐 CFData：全选 / 仅 IP:PORT / 默认选择

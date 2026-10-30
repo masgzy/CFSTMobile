@@ -143,6 +143,22 @@ fun AppRoot(viewModel: TestViewModel) {
         }
     }
 
+    // 错误/冲突统一提示卡（对齐 CFData 1.8.5「服务端错误统一弹窗提示」：居中模态卡，仅「知道了」关闭）
+    var noticeMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(viewModel) {
+        viewModel.notice.collect { message -> noticeMessage = message }
+    }
+    noticeMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { noticeMessage = null },
+            title = { Text("提示", fontWeight = FontWeight.Bold) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { noticeMessage = null }) { Text("知道了") }
+            },
+        )
+    }
+
     // 官方模式：数据中心详细测试开始后自动切到详细测试 Tab（对齐 CFData selectDC 的 switchTab('test')）
     LaunchedEffect(dcState.step, official) {
         if (official && dcState.step == com.masgzy.cfstmobile.data.DcStep.TESTING) scanTab = false
@@ -327,6 +343,9 @@ fun AppRoot(viewModel: TestViewModel) {
                         isQualified = { item ->
                             item.downloadSpeedMbps?.let { it >= settings.speedMin } == true
                         },
+                        // 官方扫描源复制/导出行序：有速度降序优先再延迟升序（对齐 CFData compareOfficialResultObjects；
+                        // 非标源保持引擎序/筛选排序弹窗就地重排后的行序）
+                        speedFirstOrder = official,
                     ),
                 )
             }
