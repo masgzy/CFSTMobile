@@ -304,17 +304,16 @@ private fun DcSummaryTable(
                 },
             )
         }
-        val summaryColors = remember(dcList, testedDcs, testingDc) {
+        // MaterialTheme 是 @Composable getter，必须在 remember 计算块外读取后捕获
+        val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val summaryColors = remember(dcList, testedDcs, testingDc, onSurfaceVariant, primaryColor) {
             dcList.map { dc ->
                 val testing = testingDc != null && testingDc.equals(dc.colo, ignoreCase = true)
                 listOf(
                     null, null, null, null,
                     delayColor(dc.minLatencyMs.toDouble()),
-                    if (testing) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
+                    if (testing) onSurfaceVariant else primaryColor,
                 )
             }
         }

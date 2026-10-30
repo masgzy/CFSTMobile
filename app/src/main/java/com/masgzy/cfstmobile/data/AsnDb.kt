@@ -69,9 +69,9 @@ object AsnDb {
         }
     }
 
-    /** 单条查询（库未加载返回 null） */
+    /** 单条查询（库未加载返回 null）。maxmind-db 3.x/4.x 的 get 均为泛型签名，Object.class = 原生解码为 Map/List */
     private fun lookup(r: Reader, ip: String): AsnInfo? = runCatching {
-        val node = r.get(InetAddress.getByName(ip)) ?: return null
+        val node = r.get(InetAddress.getByName(ip), Object::class.java) ?: return null
         val map = node as? Map<*, *> ?: return null
         val number = (map["autonomous_system_number"])?.toString()?.takeIf { it != "null" } ?: return null
         val org = (map["autonomous_system_organization"])?.toString().orEmpty()
