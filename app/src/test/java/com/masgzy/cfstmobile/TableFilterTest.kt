@@ -97,7 +97,7 @@ class TableFilterTest {
 
         val sameLossA = item(loss = 0.0, delay = 300.0, speed = 5.0)
         val sameLossB = item(loss = 0.0, delay = 10.0, speed = 10.0)
-        assertTrue(compareNsbByPriorities(sameLossA, sameLossB, keys) < 0) // 速度降序：10 优先
+        assertTrue(compareNsbByPriorities(sameLossA, sameLossB, keys) > 0) // 速度降序：B(10) 排前 → compare(A,B)>0
 
         val bothNoSpeedA = item(loss = 0.0, delay = 50.0, speed = null)
         val bothNoSpeedB = item(loss = 0.0, delay = 30.0, speed = null)
