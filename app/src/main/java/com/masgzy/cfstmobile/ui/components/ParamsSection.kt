@@ -593,7 +593,6 @@ private fun SharedParams(
                     value = settings.downloadUrl,
                     onValueChange = { v -> onUpdate { it.copy(downloadUrl = v, speedUrlPreset = SpeedUrlPresets.CUSTOM) } },
                     placeholder = "例如 speed.cloudflare.com/__down?bytes=99999999",
-                    enabled = settings.downloadEnabled,
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(
@@ -613,6 +612,14 @@ private fun SharedParams(
                         modifier = Modifier.size(18.dp),
                     )
                 }
+            }
+            if (!settings.downloadEnabled) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "未启用自动测速：网址可随时填写，开启自动测速后生效",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

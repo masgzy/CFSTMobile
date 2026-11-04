@@ -1,22 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- 明文放行仅用于：
-         1) 部分镜像站的 GitHub Raw 代理（IP 段列表获取走 OkHttp/HttpURLConnection）；
-         2) 自定义 http 下载测速 URL 的可读性提示（引擎测速走 native socket，
-            不受 usesCleartextTraffic 约束，但保持全局一致策略便于排查）。 -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- 全局放行明文 HTTP（cleartext）：
+         1) 测速工具必须支持任意用户自填地址——非标来源 URL、自定义下载测速 URL
+            （含 http://127.0.0.1、局域网 IP、http 镜像站等）；
+         2) 注意本文件在 API 24+ 会覆盖 manifest 的 usesCleartextTraffic 属性，
+            因此明文策略必须在这里声明（此前 base-config=false 曾导致
+            「Cleartext HTTP traffic to 127.0.0.1 not permitted」）；
+         3) 引擎侧下载测速走 native socket（hyper 自持栈），本不受该策略约束；
+            本配置实际约束 Kotlin 层 HttpURLConnection/OkHttp：
+            URL 列表拉取、地址库/GeoLite2-ASN/locations 等在线资源获取。 -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">speed.cloudflare.com</domain>
-        <domain includeSubdomains="true">cloudflare.com</domain>
-        <domain includeSubdomains="true">github.com</domain>
-        <domain includeSubdomains="true">raw.githubusercontent.com</domain>
-        <domain includeSubdomains="true">ghps.cc</domain>
-        <domain includeSubdomains="true">gh-proxy.com</domain>
-        <domain includeSubdomains="true">ghfast.top</domain>
-        <domain includeSubdomains="true">ghproxy.vip</domain>
-    </domain-config>
 </network-security-config>
