@@ -159,6 +159,8 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
     val content = remember(format, filteredItems, exportOptions) {
         ExportFormatter.build(filteredItems, format, exportOptions)
     }
+    /** 订阅上传正文恒为 TXT 行格式（CSV 仅表格工具对表）；remember 避免每次重组重复拼大串 */
+    val uploadTxtContent = remember(filteredItems) { ExportFormatter.toTxt(filteredItems) }
     val exportedCount = remember(content) { content.lines().count { it.isNotBlank() } }
     val preview = remember(content) { content.lines().take(6).joinToString("\n") }
 
@@ -579,12 +581,7 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
                         EdgetunnelClient.upload(
                             host = etHost,
                             password = etPassword,
-                            content = if (format == FORMAT_TXT) {
-                                content
-                            } else {
-                                // 订阅文件用 TXT 行格式；CSV 仅用于表格工具对表
-                                ExportFormatter.toTxt(filteredItems)
-                            },
+                            content = if (format == FORMAT_TXT) content else uploadTxtContent,
                             mode = etMode,
                             onStatus = { msg -> etStatus = msg },
                         ).fold(
@@ -636,7 +633,7 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
                 ghStatus = ghStatus,
                 ghStatusOk = ghStatusOk,
                 resultCount = filteredItems.size,
-                uploadContent = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(filteredItems),
+                uploadContent = if (format == FORMAT_TXT) content else uploadTxtContent,
                 onToken = { ghToken = it },
                 onOwner = { ghOwner = it },
                 onRepo = { ghRepo = it },
@@ -670,7 +667,7 @@ fun ExportDialog(sources: List<ExportSource>, onDismiss: () -> Unit, initialSour
                             branch = ghBranch,
                             path = ghPath,
                             message = ghMessage,
-                            content = if (format == FORMAT_TXT) content else ExportFormatter.toTxt(filteredItems),
+                            content = if (format == FORMAT_TXT) content else uploadTxtContent,
                             onStatus = { msg -> ghStatus = msg },
                         ).fold(
                             onSuccess = { url ->

@@ -136,18 +136,34 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     val configList: StateFlow<List<ConfigBackup.Entry>> = _configList.asStateFlow()
 
     private fun refreshConfigList() {
-        _configList.value = configBackup.list()
+        // 列表刷新含快照全量 JSON 解码（含 nsbFileText 等大文本），移交 IO 线程；
+        // StateFlow 赋值线程安全，UI 侧自然响应
+        viewModelScope.launch(Dispatchers.IO) {
+            _configList.value = configBackup.list()
+        }
+    }
+
+    /** 设置落盘去抖任务（连续点按/输入合并为最后一次；默认 300ms，0 = 立即） */
+    private var settingsSaveJob: Job? = null
+
+    private fun scheduleSettingsSave(target: UiSettings, delayMillis: Long = 300) {
+        settingsSaveJob?.cancel()
+        settingsSaveJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(delayMillis)
+            settingsRepo.save(target)
+        }
     }
 
     init {
-        // 自动加载最近保存的配置（多配置：自动加载目标 = 最近一条；对齐 CFData configAutoLoad）
+        // 自动加载最近保存的配置（多配置：自动加载目标 = 最近一条；对齐 CFData configAutoLoad）。
+        // 快照解码含大文本，磁盘读取移出主线程。
         if (_settings.value.autoLoadConfig) {
-            configBackup.latest()?.let { entry ->
-                configBackup.load(entry.id)?.let { saved ->
-                    _settings.value = saved
-                    settingsRepo.save(saved)
-                    log("已自动加载配置「${entry.name}」")
-                }
+            viewModelScope.launch(Dispatchers.IO) {
+                val entry = configBackup.latest() ?: return@launch
+                val saved = configBackup.load(entry.id) ?: return@launch
+                _settings.value = saved
+                scheduleSettingsSave(saved, 0)
+                log("已自动加载配置「${entry.name}」")
             }
         }
         refreshConfigList()
@@ -207,48 +223,60 @@ class TestViewModel(app: Application) : AndroidViewModel(app) {
     fun updateSettings(transform: (UiSettings) -> UiSettings) {
         val next = transform(_settings.value)
         _settings.value = next
-        settingsRepo.save(next)
+        // 主线程同步 save 曾致「点个按钮都卡」：JSON 编码量随 nsbFileText/customIpText
+        // 大文本线性增长；去抖合并连击 + IO 线程落盘（进程终止最多丢去抖窗口内变更）
+        scheduleSettingsSave(next)
     }
 
     /** 追加一条终端日志（时间戳前缀，对齐 CFData log-box 样式） */
     private fun log(message: String) {
         val ts = SimpleDateFormat("[HH:mm:ss]", Locale.US).format(Date())
-        val next = _logs.value + "$ts $message"
-        _logs.value = if (next.size > MAX_LOG_LINES) next.takeLast(MAX_LOG_LINES) else next
+        // update 原子 CAS：log 现已可从 IO 协程调用（快照/自动加载等），避免读改写竞态
+        _logs.update { next ->
+            val merged = next + "$ts $message"
+            if (merged.size > MAX_LOG_LINES) merged.takeLast(MAX_LOG_LINES) else merged
+        }
     }
 
     fun saveConfigSnapshot(name: String) {
         val trimmed = name.trim().ifEmpty { "配置 ${_configList.value.size + 1}" }
-        configBackup.save(trimmed, _settings.value)
-        refreshConfigList()
-        _toast.tryEmit("已保存配置「$trimmed」")
-        log("已保存配置「$trimmed」")
+        // 快照 JSON 编码（含大文本）+ 目录全量解码移交 IO 线程
+        viewModelScope.launch(Dispatchers.IO) {
+            configBackup.save(trimmed, _settings.value)
+            refreshConfigList()
+            _toast.tryEmit("已保存配置「$trimmed」")
+            log("已保存配置「$trimmed」")
+        }
     }
 
     fun loadConfigSnapshot(id: String) {
-        val saved = configBackup.load(id)
-        if (saved == null) {
-            _notice.tryEmit("配置不存在或已损坏")
-            return
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = configBackup.load(id)
+            if (saved == null) {
+                _notice.tryEmit("配置不存在或已损坏")
+                return@launch
+            }
+            _settings.value = saved
+            scheduleSettingsSave(saved, 0)
+            _toast.tryEmit("已加载配置")
+            log("已加载配置（${_configList.value.find { it.id == id }?.name ?: ""}）")
         }
-        _settings.value = saved
-        settingsRepo.save(saved)
-        _toast.tryEmit("已加载配置")
-        log("已加载配置（${_configList.value.find { it.id == id }?.name ?: ""}）")
     }
 
     fun deleteConfigSnapshot(id: String) {
-        configBackup.delete(id)
-        refreshConfigList()
-        _toast.tryEmit("已删除配置")
-        log("已删除一条配置（剩余 ${_configList.value.size} 条）")
+        viewModelScope.launch(Dispatchers.IO) {
+            configBackup.delete(id)
+            refreshConfigList()
+            _toast.tryEmit("已删除配置")
+            log("已删除一条配置（剩余 ${_configList.value.size} 条）")
+        }
     }
 
     /** 恢复全部默认配置（对齐 CFData 设置菜单危险按钮） */
     fun resetSettings() {
         val defaults = UiSettings()
         _settings.value = defaults
-        settingsRepo.save(defaults)
+        scheduleSettingsSave(defaults, 0)
         _toast.tryEmit("已恢复全部默认配置")
         log("已恢复全部默认配置")
     }

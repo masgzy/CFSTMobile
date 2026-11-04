@@ -27,7 +27,6 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
@@ -147,17 +146,15 @@ fun rememberColorScheme(
         colorTuple, isDarkTheme, amoledMode, contrastLevel,
         dynamicColor, style,
     ) {
-        derivedStateOf {
-            context.getColorScheme(
-                isDarkTheme = isDarkTheme,
-                amoledMode = amoledMode,
-                colorTuple = colorTuple,
-                style = style,
-                contrastLevel = contrastLevel,
-                dynamicColor = dynamicColor,
-            )
-        }
-    }.value
+        context.getColorScheme(
+            isDarkTheme = isDarkTheme,
+            amoledMode = amoledMode,
+            colorTuple = colorTuple,
+            style = style,
+            contrastLevel = contrastLevel,
+            dynamicColor = dynamicColor,
+        )
+    }
 }
 
 @SuppressLint("NewApi")
